@@ -9,10 +9,10 @@ import (
 )
 
 type ConfigurationHandler struct {
-	repository *repositories.Repository
+	repository *repositories.ConfigurationRepository
 }
 
-func NewConfigurationHandler(repository *repositories.Repository) *ConfigurationHandler {
+func NewConfigurationHandler(repository *repositories.ConfigurationRepository) *ConfigurationHandler {
 	return &ConfigurationHandler{
 		repository: repository,
 	}
