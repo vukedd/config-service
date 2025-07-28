@@ -78,7 +78,7 @@ func (Handler ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.R
 
 func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var configurationGroupRequest dtos.CreateConfigurationGroupRequest
+	var configurationGroupRequest dtos.ConfigurationGroupDto
 	_ = json.NewDecoder(r.Body).Decode(&configurationGroupRequest)
 
 	if len(configurationGroupRequest.ConfigurationList) < 1 {
@@ -120,6 +120,84 @@ func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.R
 
 	newConfigurationGroup := models.ConfigurationGroup{Id: "", Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
 	err := Handler.Repository.Create(&newConfigurationGroup)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	return
+}
+
+func (Handler ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	configurationGroupId := params["id"]
+
+	var configGroupData dtos.ConfigurationGroupDto
+	json.NewDecoder(r.Body).Decode(&configGroupData)
+
+	if len(configGroupData.ConfigurationList) < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+
+		errorResponse := map[string]string{"error": "you must define at least one configuration"}
+		json.NewEncoder(w).Encode(errorResponse)
+
+		return
+	}
+
+	configurationGroupConfigurationList := []*models.LabeledConfiguration{}
+
+	for _, configurationItem := range configGroupData.ConfigurationList {
+		found := false
+		for _, configuration := range Handler.ConfigurationRepository.Configurations {
+			if configurationItem.Id == configuration.Id {
+				found = true
+				configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
+			}
+		}
+
+		if found == false {
+			w.WriteHeader(http.StatusNotFound)
+			errorResponse := map[string]string{"error": "configuration with the id " + configurationItem.Id + " does not exist"}
+			json.NewEncoder(w).Encode(errorResponse)
+			return
+		}
+	}
+
+	updateConfigurationGroup := models.ConfigurationGroup{Id: configurationGroupId, Name: configGroupData.Name, Version: configGroupData.Version, Configurations: configurationGroupConfigurationList}
+	err := Handler.Repository.Update(configurationGroupId, &updateConfigurationGroup)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	return
+}
+
+func (Handler ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	configurationGroupId := params["id"]
+
+	configurationGroup, err := Handler.Repository.FindById(configurationGroupId)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	configurationsTransformedToDto := []*dtos.ConfigurationGroupConfigurationDto{}
+	for _, configuration := range configurationGroup.Configurations {
+		configurationsTransformedToDto = append(configurationsTransformedToDto, &dtos.ConfigurationGroupConfigurationDto{Id: configuration.Id, Labels: configuration.Labels})
+	}
+
+	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
+	err = json.NewEncoder(w).Encode(configurationGroupDto)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		errorResponse := map[string]string{"error": err.Error()}

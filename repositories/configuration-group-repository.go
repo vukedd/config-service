@@ -88,3 +88,20 @@ func (Repository *ConfigurationGroupRepository) Create(ConfigurationGroup *model
 	Repository.ConfigurationGroups = append(Repository.ConfigurationGroups, ConfigurationGroup)
 	return nil
 }
+
+func (Repository *ConfigurationGroupRepository) Update(Id string, ConfigurationGroup *models.ConfigurationGroup) error {
+	targetIndex := -1
+	for i, configuration := range Repository.ConfigurationGroups {
+		if configuration.Id == Id {
+			targetIndex = i
+			break
+		}
+	}
+
+	if targetIndex == -1 {
+		return errors.New("configuration group not found")
+	}
+
+	Repository.ConfigurationGroups[targetIndex].Configurations = ConfigurationGroup.Configurations
+	return nil
+}

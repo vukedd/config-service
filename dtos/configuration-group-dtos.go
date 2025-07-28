@@ -1,7 +1,7 @@
 package dtos
 
-type CreateConfigurationGroupRequest struct {
-	Name              string                                      `json:"name"`
-	Version           string                                      `json:"version"`
-	ConfigurationList []*CreateConfigurationGroupConfigurationDto `json:"configuration_list"`
+type ConfigurationGroupDto struct {
+	Name              string                                `json:"name"`
+	Version           string                                `json:"version"`
+	ConfigurationList []*ConfigurationGroupConfigurationDto `json:"configuration_list"`
 }

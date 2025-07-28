@@ -21,7 +21,10 @@ func HandleRequests() *mux.Router {
 
 	router.HandleFunc("/configurationGroups", configurationGroupHandler.FindAll).Methods("GET")
 	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.FindById).Methods("GET")
+	router.HandleFunc("/configurationGroups/dto/{id}", configurationGroupHandler.FindByIdToDto).Methods("GET")
 	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.Delete).Methods("DELETE")
 	router.HandleFunc("/configurationGroups", configurationGroupHandler.Create).Methods("POST")
+	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.Update).Methods("PUT")
+
 	return router
 }
