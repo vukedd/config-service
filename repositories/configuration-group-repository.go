@@ -79,14 +79,14 @@ func (Repository *ConfigurationGroupRepository) Delete(Id string) error {
 	return errors.New("configuration group not found")
 }
 
-func (Repository *ConfigurationGroupRepository) Create(ConfigurationGroup *models.ConfigurationGroup) error {
+func (Repository *ConfigurationGroupRepository) Create(ConfigurationGroup *models.ConfigurationGroup) (*models.ConfigurationGroup, error) {
 	ConfigurationGroup.Id = uuid.New().String()
 	for _, configuration := range ConfigurationGroup.Configurations {
 		configuration.Id = uuid.New().String()
 	}
 
 	Repository.ConfigurationGroups = append(Repository.ConfigurationGroups, ConfigurationGroup)
-	return nil
+	return ConfigurationGroup, nil
 }
 
 func (Repository *ConfigurationGroupRepository) Update(Id string, ConfigurationGroup *models.ConfigurationGroup) error {

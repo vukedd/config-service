@@ -3,7 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"github.com/gorilla/mux"
-	"github.com/vukedd/config-service/models"
+	"github.com/vukedd/config-service/dtos"
+	"github.com/vukedd/config-service/mappers"
 	"github.com/vukedd/config-service/repositories"
 	"net/http"
 )
@@ -66,7 +67,7 @@ func (handler ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Requ
 func (handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var configuration models.Configuration
+	var configuration dtos.CreateConfigurationDto
 	_ = json.NewDecoder(r.Body).Decode(&configuration)
 
 	if len(configuration.Parameters) < 1 {
@@ -78,7 +79,7 @@ func (handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	createdConfig, err := handler.repository.Create(configuration)
+	createdConfig, err := handler.repository.Create(*(mappers.ToConfiguration(&configuration)))
 	if err != nil {
 		w.WriteHeader(http.StatusConflict)
 

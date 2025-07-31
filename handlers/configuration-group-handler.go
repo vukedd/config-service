@@ -99,6 +99,9 @@ func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// I thought it was a good idea to leave the transformation from dto the model in the handler since we are going
+	// to check if selected configurations for this configuration group exist by fetching data from the repository,
+	// and by leaving it as it is, I am avoiding giving mapper classes data access :D SAME GOES FOR THE UPDATE METHOD
 	configurationGroupConfigurationList := []*models.LabeledConfiguration{}
 
 	for _, configurationItem := range configurationGroupRequest.ConfigurationList {
@@ -119,7 +122,15 @@ func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.R
 	}
 
 	newConfigurationGroup := models.ConfigurationGroup{Id: "", Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
-	err := Handler.Repository.Create(&newConfigurationGroup)
+	configGroup, err := Handler.Repository.Create(&newConfigurationGroup)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(configGroup)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		errorResponse := map[string]string{"error": err.Error()}
@@ -192,8 +203,8 @@ func (Handler ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r 
 	}
 
 	configurationsTransformedToDto := []*dtos.ConfigurationGroupConfigurationDto{}
-	for _, configuration := range configurationGroup.Configurations {
-		configurationsTransformedToDto = append(configurationsTransformedToDto, &dtos.ConfigurationGroupConfigurationDto{Id: configuration.Id, Labels: configuration.Labels})
+	for _, labeledConfiguration := range configurationGroup.Configurations {
+		configurationsTransformedToDto = append(configurationsTransformedToDto, &dtos.ConfigurationGroupConfigurationDto{Id: labeledConfiguration.Configuration.Id, Labels: labeledConfiguration.Labels})
 	}
 
 	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}

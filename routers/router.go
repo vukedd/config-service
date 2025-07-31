@@ -4,9 +4,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/vukedd/config-service/handlers"
 	"github.com/vukedd/config-service/repositories"
+	"net/http"
 )
 
-func HandleRequests() *mux.Router {
+func HandleRequests() http.Handler {
 	configurationRepository := repositories.NewRepository()
 	configurationGroupRepository := repositories.NewConfigurationGroupRepository()
 
