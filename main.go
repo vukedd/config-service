@@ -9,13 +9,27 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/mux"
+	"github.com/hashicorp/consul/api"
 	"github.com/vukedd/config-service/routers"
+	"golang.org/x/time/rate"
 )
 
 func main() {
+
+	// 10 requests on initialization,
+	// 12 requests per minute (1 request per 5 seconds)
+	limiter := rate.NewLimiter(0.2, 10)
+
+	router := mux.NewRouter()
+
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = "127.0.0.1:8500" // Or from config
+	consulClient, _ := api.NewClient(consulConfig)
+
 	srv := http.Server{
 		Addr:    ":8000",
-		Handler: routers.HandleRequests(),
+		Handler: routers.HandleRequests(router, limiter, consulClient),
 	}
 
 	// Starting the server on a new go-routine instead of the main one because the code bellow
