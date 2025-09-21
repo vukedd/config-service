@@ -2,9 +2,10 @@ package repositories
 
 import (
 	"errors"
+	"strconv"
+
 	"github.com/google/uuid"
 	"github.com/vukedd/config-service/models"
-	"strconv"
 )
 
 type ConfigurationGroupRepository struct {
@@ -104,4 +105,24 @@ func (Repository *ConfigurationGroupRepository) Update(Id string, ConfigurationG
 
 	Repository.ConfigurationGroups[targetIndex].Configurations = ConfigurationGroup.Configurations
 	return nil
+}
+
+func (Repository *ConfigurationGroupRepository) FindByNameAndVersion(name string, version string) (*models.ConfigurationGroup, error) {
+	for _, configurationGroup := range Repository.ConfigurationGroups {
+		if configurationGroup.Name == name && configurationGroup.Version == version {
+			return configurationGroup, nil
+		}
+	}
+
+	return nil, errors.New("configuration group not found")
+}
+
+func (Repository *ConfigurationGroupRepository) DeleteByNameAndVersion(name string, version string) error {
+	for _, configurationGroup := range Repository.ConfigurationGroups {
+		if configurationGroup.Name == name && configurationGroup.Version == version {
+			Repository.ConfigurationGroups = append(Repository.ConfigurationGroups[:0], Repository.ConfigurationGroups[1:]...)
+			return nil
+		}
+	}
+	return errors.New("configuration group not found")
 }

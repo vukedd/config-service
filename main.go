@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/vukedd/config-service/routers"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/vukedd/config-service/routers"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 	}
 
 	// Starting the server on a new go-routine instead of the main one because the code bellow
-	// this block will never be executed since the go-routine will be used be the server which will
+	// this block will never be executed since the go-routine will be used by the server which will
 	// listen for requests throughout its lifecycle
 	go func() {
 		fmt.Println("Listening on port :8000")
