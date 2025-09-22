@@ -16,7 +16,7 @@ import (
 // RateLimit is a function that takes the limiter type as well as functions which has http.ResponseWriter
 // and *http.Request as params (handlers) as arguments,
 func RateLimit(limiter *rate.Limiter, next func(w http.ResponseWriter, r *http.Request)) http.Handler {
-	// Returns a new handler that wraps the original one,
+	// Returns a new handler that wraps the original one,zz
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// Checks is the limit of requests in the given timeframe reached,
@@ -99,7 +99,9 @@ func IdempotencyMiddleware(consulClient *api.Client) func(http.Handler) http.Han
 				return
 			}
 
-			// Defer deleting the key if the handler panics before completion.
+			// This function will be scheduled to be executed later in the function after the request is handled in the handler component,
+			// 1. If any type of error happened in the handler, r will not be nil and the logic inside the if block will be called,
+			// 2. If everything went well, r will be nil and the code inside the if block won't be called at all
 			defer func() {
 				if r := recover(); r != nil {
 					kv.Delete(keyPath, nil)
