@@ -3,22 +3,37 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/vukedd/config-service/routers"
 	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/hashicorp/consul/api"
+	"github.com/vukedd/config-service/routers"
+	"golang.org/x/time/rate"
 )
 
 func main() {
+
+	// 10 requests on initialization,
+	// 12 requests per minute (1 request per 5 seconds)
+	limiter := rate.NewLimiter(0.2, 10)
+
+	router := mux.NewRouter()
+
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = "127.0.0.1:8500" // Or from config
+	consulClient, _ := api.NewClient(consulConfig)
+
 	srv := http.Server{
 		Addr:    ":8000",
-		Handler: routers.HandleRequests(),
+		Handler: routers.HandleRequests(router, limiter, consulClient),
 	}
 
 	// Starting the server on a new go-routine instead of the main one because the code bellow
-	// this block will never be executed since the go-routine will be used be the server which will
+	// this block will never be executed since the go-routine will be used by the server which will
 	// listen for requests throughout its lifecycle
 	go func() {
 		fmt.Println("Listening on port :8000")

@@ -1,31 +1,45 @@
 package routers
 
 import (
-	"github.com/gorilla/mux"
-	"github.com/vukedd/config-service/handlers"
-	"github.com/vukedd/config-service/repositories"
 	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/hashicorp/consul/api"
+	"github.com/vukedd/config-service/handlers"
+	"github.com/vukedd/config-service/middleware"
+	"github.com/vukedd/config-service/repositories"
+	"golang.org/x/time/rate"
 )
 
-func HandleRequests() http.Handler {
+func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api.Client) http.Handler {
 	configurationRepository := repositories.NewRepository()
 	configurationGroupRepository := repositories.NewConfigurationGroupRepository()
 
 	configurationHandler := handlers.NewConfigurationHandler(configurationRepository)
 	configurationGroupHandler := handlers.NewConfigurationGroupHandler(configurationGroupRepository, configurationRepository)
 
-	router := mux.NewRouter()
-	router.HandleFunc("/configurations", configurationHandler.FindAll).Methods("GET")
-	router.HandleFunc("/configurations/{id}", configurationHandler.FindById).Methods("GET")
-	router.HandleFunc("/configurations", configurationHandler.Create).Methods("POST")
-	router.HandleFunc("/configurations/{id}", configurationHandler.Delete).Methods("DELETE")
+	// BASIC OPERATIONS CONFIGURATIONS
+	router.Handle("/configurations", middleware.RateLimit(limiter, configurationHandler.FindAll)).Methods("GET")
+	router.Handle("/configurations/{id}", middleware.RateLimit(limiter, configurationHandler.FindById)).Methods("GET")
+	router.Handle("/configurations", middleware.IdempotencyMiddleware(consulClient)(middleware.RateLimit(limiter, configurationHandler.Create))).Methods("POST")
+	router.Handle("/configurations/{id}", middleware.RateLimit(limiter, configurationHandler.Delete)).Methods("DELETE")
 
-	router.HandleFunc("/configurationGroups", configurationGroupHandler.FindAll).Methods("GET")
-	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.FindById).Methods("GET")
-	router.HandleFunc("/configurationGroups/dto/{id}", configurationGroupHandler.FindByIdToDto).Methods("GET")
-	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.Delete).Methods("DELETE")
-	router.HandleFunc("/configurationGroups", configurationGroupHandler.Create).Methods("POST")
-	router.HandleFunc("/configurationGroups/{id}", configurationGroupHandler.Update).Methods("PUT")
+	// VERSIONING OPERATIONS CONFIGURATIONS
+	router.Handle("/configuration/{name}/{version}", middleware.RateLimit(limiter, configurationHandler.DeleteByNameAndVersion)).Methods("DELETE")
+	router.Handle("/configuration/{name}/{version}", middleware.RateLimit(limiter, configurationHandler.FindByNameAndVersion)).Methods("GET")
+
+	// BASIC OPERATIONS CONFIGURATION GROUP
+	router.Handle("/configurationGroups", middleware.RateLimit(limiter, configurationGroupHandler.FindAll)).Methods("GET")
+	router.Handle("/configurationGroups/{id}", middleware.RateLimit(limiter, configurationGroupHandler.FindById)).Methods("GET")
+	router.Handle("/configurationGroups/dto/{id}", middleware.RateLimit(limiter, configurationGroupHandler.FindByIdToDto)).Methods("GET")
+	router.Handle("/configurationGroups/{id}", middleware.RateLimit(limiter, configurationGroupHandler.Delete)).Methods("DELETE")
+	router.Handle("/configurationGroups", middleware.IdempotencyMiddleware(consulClient)(middleware.RateLimit(limiter, configurationGroupHandler.Create))).Methods("POST")
+	router.Handle("/configurationGroups/{id}", middleware.RateLimit(limiter, configurationGroupHandler.Update)).Methods("PUT")
+
+	// VERSIONING OPERATIONS CONFIGURATION GROUP
+	router.HandleFunc("/configurationGroups/{name}/{version}", configurationGroupHandler.FindByNameAndVersion).Methods("GET")
+	router.HandleFunc("/configurationGroups/dto/{name}/{version}", configurationGroupHandler.FindByNameAndVersionToDto).Methods("GET")
+	router.HandleFunc("/configurationGroups/{name}/{version}", configurationGroupHandler.DeleteByNameAndVersion).Methods("DELETE")
 
 	return router
 }

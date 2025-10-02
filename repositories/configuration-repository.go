@@ -2,9 +2,10 @@ package repositories
 
 import (
 	"errors"
+	"strconv"
+
 	"github.com/google/uuid"
 	"github.com/vukedd/config-service/models"
-	"strconv"
 )
 
 type ConfigurationRepository struct {
@@ -20,12 +21,12 @@ func NewRepository() *ConfigurationRepository {
 	return &repository
 }
 
-func (repository *ConfigurationRepository) FindAll() []*models.Configuration {
-	return repository.Configurations
+func (Repository *ConfigurationRepository) FindAll() []*models.Configuration {
+	return Repository.Configurations
 }
 
-func (repository *ConfigurationRepository) FindById(id string) (*models.Configuration, error) {
-	for _, configuration := range repository.Configurations {
+func (Repository *ConfigurationRepository) FindById(id string) (*models.Configuration, error) {
+	for _, configuration := range Repository.Configurations {
 		if configuration.Id == id {
 			return configuration, nil
 		}
@@ -54,4 +55,25 @@ func (Repository *ConfigurationRepository) Delete(id string) error {
 	}
 
 	return errors.New("configuration not found")
+}
+
+func (Repository *ConfigurationRepository) DeleteByNameAndVersion(name string, version string) error {
+	for i, configuration := range Repository.Configurations {
+		if configuration.Name == name && configuration.Version == version {
+			Repository.Configurations = append(Repository.Configurations[:i], Repository.Configurations[i+1:]...)
+			return nil
+		}
+	}
+
+	return errors.New("configuration not found")
+}
+
+func (Repository *ConfigurationRepository) FindByNameAndVersion(name string, version string) (*models.Configuration, error) {
+	for _, configuration := range Repository.Configurations {
+		if configuration.Name == name && configuration.Version == version {
+			return configuration, nil
+		}
+	}
+
+	return nil, errors.New("configuration not found")
 }

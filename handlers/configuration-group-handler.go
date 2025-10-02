@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"github.com/vukedd/config-service/dtos"
 	"github.com/vukedd/config-service/models"
 	"github.com/vukedd/config-service/repositories"
-	"net/http"
 )
 
 type ConfigurationGroupHandler struct {
@@ -85,7 +86,10 @@ func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.R
 		w.WriteHeader(http.StatusBadRequest)
 
 		errorResponse := map[string]string{"error": "you must define at least one configuration"}
-		json.NewEncoder(w).Encode(errorResponse)
+		err := json.NewEncoder(w).Encode(errorResponse)
+		if err != nil {
+			return
+		}
 
 		return
 	}
@@ -216,5 +220,79 @@ func (Handler ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r 
 		return
 	}
 
+	return
+}
+
+func (Handler ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	configurationGroupName := params["name"]
+	configurationGroupVersion := params["version"]
+
+	configurationGroup, err := Handler.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(configurationGroup)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	return
+}
+
+func (Handler ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	configurationGroupName := params["name"]
+	configurationGroupVersion := params["version"]
+
+	configurationGroup, err := Handler.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	configurationsTransformedToDto := []*dtos.ConfigurationGroupConfigurationDto{}
+	for _, labeledConfiguration := range configurationGroup.Configurations {
+		configurationsTransformedToDto = append(configurationsTransformedToDto, &dtos.ConfigurationGroupConfigurationDto{Id: labeledConfiguration.Configuration.Id, Labels: labeledConfiguration.Labels})
+	}
+
+	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
+	err = json.NewEncoder(w).Encode(configurationGroupDto)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	return
+}
+
+func (Handler ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	configurationGroupName := params["name"]
+	configurationGroupVersion := params["version"]
+
+	err := Handler.Repository.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return
 }

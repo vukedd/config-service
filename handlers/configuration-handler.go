@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"github.com/vukedd/config-service/dtos"
 	"github.com/vukedd/config-service/mappers"
 	"github.com/vukedd/config-service/repositories"
-	"net/http"
 )
 
 type ConfigurationHandler struct {
@@ -19,9 +20,9 @@ func NewConfigurationHandler(repository *repositories.ConfigurationRepository) *
 	}
 }
 
-func (handler ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
+func (Handler ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurations := handler.repository.FindAll()
+	configurations := Handler.repository.FindAll()
 
 	err := json.NewEncoder(w).Encode(configurations)
 
@@ -36,11 +37,11 @@ func (handler ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Reque
 	return
 }
 
-func (handler ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
+func (Handler ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	configuration, err := handler.repository.FindById(id)
+	configuration, err := Handler.repository.FindById(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -64,7 +65,7 @@ func (handler ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Requ
 	return
 }
 
-func (handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (Handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var configuration dtos.CreateConfigurationDto
@@ -79,7 +80,7 @@ func (handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	createdConfig, err := handler.repository.Create(*(mappers.ToConfiguration(&configuration)))
+	createdConfig, err := Handler.repository.Create(*(mappers.ToConfiguration(&configuration)))
 	if err != nil {
 		w.WriteHeader(http.StatusConflict)
 
@@ -102,11 +103,11 @@ func (handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Reques
 	return
 }
 
-func (handler ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (Handler ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	err := handler.repository.Delete(id)
+	err := Handler.repository.Delete(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -116,5 +117,48 @@ func (handler ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+	return
+}
+
+func (Handler ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	name := params["name"]
+	version := params["version"]
+
+	err := Handler.repository.DeleteByNameAndVersion(name, version)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return
+}
+
+func (Handler ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	params := mux.Vars(r)
+	name := params["name"]
+	version := params["version"]
+
+	configuration, err := Handler.repository.FindByNameAndVersion(name, version)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(configuration)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorResponse := map[string]string{"error": err.Error()}
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+
 	return
 }
