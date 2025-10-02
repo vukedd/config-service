@@ -76,6 +76,6 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(timeoutContext); err != nil {
-		log.Fatalf("Stopped shutting down: " + err.Error())
+		log.Fatalf("Stopped shutting down: %s", err.Error())
 	}
 }
