@@ -1,0 +1,11 @@
+{
+	"name": "Config Service b1",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	"features": {
+		"ghcr.io/devcontainers/features/go:1": {
+			"golangciLintVersion": "latest",
+			"version": "1.25.0"
+		}
+	},
+	"updateContentCommand": "bash .devcontainer/scripts/update-content.sh"
+}
