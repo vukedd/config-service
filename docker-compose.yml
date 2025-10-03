@@ -1,13 +1,14 @@
 services:
   server:
-    build:    volumes:
-      - ./prometheus:/etc/prometheus
-      - prometheus-data:/prometheus
+    build: .
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'start: always
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
     ports:
       - 8000:8000
     environment:
