@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services: {}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +23,17 @@ jobs:
       - name: Build
         run: go build -v ./...
 
+      - name: Start Consul via Docker Compose
+        run: |
+          docker compose up -d consul
+          echo "Waiting for Consul to be healthy..."
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' $(docker-compose ps -q consul))" == "healthy" ]; do
+            sleep 2
+          done
+
       - name: Run unit tests
+        env:
+          CONSUL_ADDRESS: "localhost:8500"
         run: go test -v ./...
 
   docker:

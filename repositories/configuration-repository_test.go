@@ -1,8 +1,9 @@
 package repositories_test
 
 import (
-	. "github.com/franela/goblin"
 	"testing"
+
+	. "github.com/franela/goblin"
 
 	"github.com/vukedd/config-service/models"
 	"github.com/vukedd/config-service/repositories"
@@ -24,10 +25,17 @@ func assertConfigurationsEqual(g *G, config1 *models.Configuration, config2 *mod
 
 func TestFindByNameAndVersion(t *testing.T) {
 	g := Goblin(t)
+	c := createConsul(g)
+	repo := repositories.NewConfigurationRepository(c)
+
 	g.Describe("FindByNameAndVersion", func() {
+		g.AfterEach(func() {
+			_ = repo.DeleteByNameAndVersion("golang-test-1", "1.0.0")
+			_ = repo.DeleteByNameAndVersion("golang-test-1", "1.1.0")
+		})
+
 		g.It("should return a configuration", func() {
-			repo := repositories.NewRepository()
-			_, err := repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+			_, err := repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
 			if err != nil {
 				g.Errorf("Expected no error, got %s", err.Error())
 			}
@@ -41,12 +49,11 @@ func TestFindByNameAndVersion(t *testing.T) {
 		})
 
 		g.It("should search by name and version", func() {
-			repo := repositories.NewRepository()
-			_, err := repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+			_, err := repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
 			if err != nil {
 				g.Errorf("Expected no error, got %s", err.Error())
 			}
-			_, err = repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.1.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+			_, err = repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.1.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
 			if err != nil {
 				g.Errorf("Expected no error, got %s", err.Error())
 			}
@@ -66,7 +73,6 @@ func TestFindByNameAndVersion(t *testing.T) {
 		})
 
 		g.It("should return error if configuration not found", func() {
-			repo := repositories.NewRepository()
 			_, err := repo.FindByNameAndVersion("golang-test-1", "1.0.0")
 			if err == nil {
 				g.Errorf("Expected error, got nil")
@@ -81,12 +87,16 @@ func TestFindByNameAndVersion(t *testing.T) {
 
 func TestCreate(t *testing.T) {
 	g := Goblin(t)
+	c := createConsul(g)
+	repo := repositories.NewConfigurationRepository(c)
 
 	g.Describe("Create", func() {
-		g.It("should create a configuration", func() {
+		g.AfterEach(func() {
+			_ = repo.DeleteByNameAndVersion("golang-test-1", "1.0.0")
+		})
 
-			repo := repositories.NewRepository()
-			config, err := repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+		g.It("should create a configuration", func() {
+			config, err := repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
 			if err != nil {
 				g.Errorf("Expected no error, got %s", err.Error())
 			}
@@ -95,9 +105,8 @@ func TestCreate(t *testing.T) {
 		})
 
 		g.It("should return error if configuration already exists", func() {
-			repo := repositories.NewRepository()
-			repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
-			_, err := repo.Create(models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+			repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
+			_, err := repo.Create(&models.Configuration{Name: "golang-test-1", Version: "1.0.0", Parameters: map[string]string{"db_url": "localhost:1234/db"}})
 			if err == nil {
 				g.Errorf("Expected error, got nil")
 			}
