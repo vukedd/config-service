@@ -3,6 +3,7 @@ package routers
 import (
 	"net/http"
 
+	openapimiddleware "github.com/go-openapi/runtime/middleware"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/consul/api"
 	"github.com/vukedd/config-service/handlers"
@@ -17,6 +18,17 @@ func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api
 
 	configurationHandler := handlers.NewConfigurationHandler(configurationRepository)
 	configurationGroupHandler := handlers.NewConfigurationGroupHandler(configurationGroupRepository, configurationRepository)
+
+	// SWAGGER DOCUMENTATION
+	// Setup Swagger YAML endpoint
+	router.HandleFunc("/swagger.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "swagger.yaml")
+	})
+
+	// SwaggerUI
+	optionsDevelopers := openapimiddleware.SwaggerUIOpts{SpecURL: "swagger.yaml"}
+	developerDocumentationHandler := openapimiddleware.SwaggerUI(optionsDevelopers, nil)
+	router.Handle("/docs", developerDocumentationHandler)
 
 	// BASIC OPERATIONS CONFIGURATIONS
 	router.Handle("/configurations", middleware.RateLimit(limiter, configurationHandler.FindAll)).Methods("GET")
