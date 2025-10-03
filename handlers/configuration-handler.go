@@ -36,8 +36,8 @@ func (h ConfigurationHandler) sendErrorResponse(w http.ResponseWriter, statusCod
 // This endpoint retrieves all configurations in the system.
 //
 // Responses:
-//   200: []Configuration
-//   500: ErrorResponse
+//   200: body:[]Configuration
+//   500: body:ErrorResponse
 func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	configurations := h.repository.FindAll()
@@ -57,14 +57,16 @@ func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 // This endpoint retrieves a specific configuration by its ID.
 //
 // Parameters:
-//   + name: ConfigurationByIdParams
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration
 //
 // Responses:
-//   200: Configuration
-//   404: ErrorResponse
-//   500: ErrorResponse
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:Configuration
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -89,14 +91,11 @@ func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 //
 // This endpoint creates a new configuration with the provided data.
 //
-// Parameters:
-//   + name: CreateConfigurationParams
-//
 // Responses:
-//   200: Configuration
-//   400: ErrorResponse
-//   409: ErrorResponse
-//   500: ErrorResponse
+//   200: body:Configuration
+//   400: body:ErrorResponse
+//   409: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -128,11 +127,15 @@ func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 // This endpoint deletes a specific configuration by its ID.
 //
 // Parameters:
-//   + name: ConfigurationByIdParams
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration
 //
 // Responses:
-//   204: NoContentResponse
-//   404: ErrorResponse
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
 func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -156,11 +159,20 @@ func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // This endpoint deletes a specific configuration by its name and version.
 //
 // Parameters:
-//   + name: ConfigurationByNameAndVersionParams
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration
 //
 // Responses:
-//   204: NoContentResponse
-//   404: ErrorResponse
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
 func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -185,12 +197,21 @@ func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *h
 // This endpoint retrieves a specific configuration by its name and version.
 //
 // Parameters:
-//   + name: ConfigurationByNameAndVersionParams
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration
 //
 // Responses:
-//   200: Configuration
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:Configuration
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)

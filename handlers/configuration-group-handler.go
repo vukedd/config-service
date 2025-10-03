@@ -34,8 +34,8 @@ func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, stat
 // This endpoint retrieves all configuration groups in the system.
 //
 // Responses:
-//   200: []ConfigurationGroup
-//   500: ErrorResponse
+//   200: body:[]ConfigurationGroup
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	configurationGroups := h.Repository.FindAll()
@@ -54,12 +54,16 @@ func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Reques
 // This endpoint retrieves a specific configuration group by its ID.
 //
 // Parameters:
-//   + name: ConfigurationGroupByIdParams
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
 //
 // Responses:
-//   200: ConfigurationGroup
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroup
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -85,11 +89,15 @@ func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Reque
 // This endpoint deletes a specific configuration group by its ID.
 //
 // Parameters:
-//   + name: ConfigurationGroupByIdParams
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
 //
 // Responses:
-//   204: NoContentResponse
-//   404: ErrorResponse
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
 func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -112,15 +120,12 @@ func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request
 //
 // This endpoint creates a new configuration group with the provided data.
 //
-// Parameters:
-//   + name: CreateConfigurationGroupParams
-//
 // Responses:
-//   200: ConfigurationGroup
-//   400: ErrorResponse
-//   404: ErrorResponse
-//   409: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroup
+//   400: body:ErrorResponse
+//   404: body:ErrorResponse
+//   409: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var configurationGroupRequest dtos.ConfigurationGroupDto
@@ -178,15 +183,11 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 //
 // This endpoint updates an existing configuration group with the provided data.
 //
-// Parameters:
-//   + name: ConfigurationGroupByIdParams
-//   + name: UpdateConfigurationGroupParams
-//
 // Responses:
-//   200: ConfigurationGroup
-//   400: ErrorResponse
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroup
+//   400: body:ErrorResponse
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -232,12 +233,16 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 // This endpoint retrieves a specific configuration group by its ID and returns it as a DTO.
 //
 // Parameters:
-//   + name: ConfigurationGroupByIdParams
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
 //
 // Responses:
-//   200: ConfigurationGroupDto
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroupDto
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -269,12 +274,21 @@ func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.
 // This endpoint retrieves a specific configuration group by its name and version.
 //
 // Parameters:
-//   + name: ConfigurationGroupByNameAndVersionParams
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
 //
 // Responses:
-//   200: ConfigurationGroup
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroup
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -301,12 +315,21 @@ func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r
 // This endpoint retrieves a specific configuration group by its name and version and returns it as a DTO.
 //
 // Parameters:
-//   + name: ConfigurationGroupByNameAndVersionParams
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
 //
 // Responses:
-//   200: ConfigurationGroupDto
-//   404: ErrorResponse
-//   500: ErrorResponse
+//   200: body:ConfigurationGroupDto
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -339,11 +362,20 @@ func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWrit
 // This endpoint deletes a specific configuration group by its name and version.
 //
 // Parameters:
-//   + name: ConfigurationGroupByNameAndVersionParams
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
 //
 // Responses:
-//   204: NoContentResponse
-//   404: ErrorResponse
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
 func (h ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
