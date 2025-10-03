@@ -51,6 +51,7 @@ jobs:
           tags: |
             ${{ format('{0}/{1}:{2}', secrets.DOCKERHUB_USERNAME, github.event.repository.name, github.sha) }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/{1}:latest', secrets.DOCKERHUB_USERNAME, github.event.repository.name) || '' }}
+            ${{ github.ref == 'refs/heads/develop' && format('{0}/{1}:develop', secrets.DOCKERHUB_USERNAME, github.event.repository.name) || '' }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:cache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:cache,mode=max
 
