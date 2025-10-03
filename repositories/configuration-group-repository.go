@@ -33,7 +33,7 @@ func NewConfigurationGroupRepository(consulClient *api.Client) *ConfigurationGro
 
 func (r *ConfigurationGroupRepository) FindAll() ([]*models.ConfigurationGroup, error) {
 	kv := r.consul.KV()
-	pairs, _, err := kv.List(fmt.Sprintf("%s/", consulConfigsKey), nil)
+	pairs, _, err := kv.List(fmt.Sprintf("%s/", consulGroupsKey), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -51,14 +51,14 @@ func (r *ConfigurationGroupRepository) FindAll() ([]*models.ConfigurationGroup, 
 	return configs, nil
 }
 
-func (r *ConfigurationGroupRepository) FindById(Id string) (*models.ConfigurationGroup, error) {
+func (r *ConfigurationGroupRepository) FindById(id string) (*models.ConfigurationGroup, error) {
 	groups, err := r.FindAll()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, group := range groups {
-		if group.Id == Id {
+		if group.Id == id {
 			return group, nil
 		}
 	}

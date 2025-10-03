@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/go-openapi/runtime v0.29.0
+	github.com/franela/goblin v0.0.0-20211003143422-0a4f594942bf
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/hashicorp/consul/api v1.32.3
