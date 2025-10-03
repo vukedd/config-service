@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/vukedd/config-service/dtos"
 	"github.com/vukedd/config-service/mappers"
+	"github.com/vukedd/config-service/models"
 	"github.com/vukedd/config-service/repositories"
 )
 
@@ -20,145 +21,211 @@ func NewConfigurationHandler(repository *repositories.ConfigurationRepository) *
 	}
 }
 
-func (Handler ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
+// Helper function to send error response
+func (h ConfigurationHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.WriteHeader(statusCode)
+	errorResponse := models.ErrorResponse{Status: statusCode, Message: message}
+	json.NewEncoder(w).Encode(errorResponse)
+}
+
+// FindAll retrieves all configurations
+// swagger:route GET /configurations configurations getAllConfigurations
+//
+// Get all configurations
+//
+// This endpoint retrieves all configurations in the system.
+//
+// Responses:
+//   200: body:[]Configuration
+//   500: body:ErrorResponse
+func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurations := Handler.repository.FindAll()
+	configurations := h.repository.FindAll()
 
 	err := json.NewEncoder(w).Encode(configurations)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-	return
 }
 
-func (Handler ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
+// FindById retrieves a configuration by ID
+// swagger:route GET /configurations/{id} configurations getConfigurationById
+//
+// Get configuration by ID
+//
+// This endpoint retrieves a specific configuration by its ID.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration
+//
+// Responses:
+//   200: body:Configuration
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	configuration, err := Handler.repository.FindById(id)
+	configuration, err := h.repository.FindById(id)
 
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configuration)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
+// Create creates a new configuration
+// swagger:route POST /configurations configurations createConfiguration
+//
+// Create a new configuration
+//
+// This endpoint creates a new configuration with the provided data.
+//
+// Responses:
+//   200: body:Configuration
+//   400: body:ErrorResponse
+//   409: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var configuration dtos.CreateConfigurationDto
 	_ = json.NewDecoder(r.Body).Decode(&configuration)
 
 	if len(configuration.Parameters) < 1 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		errorResponse := map[string]string{"error": "you must specify at least one parameter"}
-		json.NewEncoder(w).Encode(errorResponse)
-
+		h.sendErrorResponse(w, http.StatusBadRequest, "you must specify at least one parameter")
 		return
 	}
 
-	createdConfig, err := Handler.repository.Create(*(mappers.ToConfiguration(&configuration)))
+	createdConfig, err := h.repository.Create(*(mappers.ToConfiguration(&configuration)))
 	if err != nil {
-		w.WriteHeader(http.StatusConflict)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
+		h.sendErrorResponse(w, http.StatusConflict, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(createdConfig)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+// Delete removes a configuration by ID
+// swagger:route DELETE /configurations/{id} configurations deleteConfigurationById
+//
+// Delete configuration by ID
+//
+// This endpoint deletes a specific configuration by its ID.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration
+//
+// Responses:
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
+func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	err := Handler.repository.Delete(id)
+	err := h.repository.Delete(id)
 
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
+	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
 
-func (Handler ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+// DeleteByNameAndVersion removes a configuration by name and version
+// swagger:route DELETE /configuration/{name}/{version} configurations deleteConfigurationByNameAndVersion
+//
+// Delete configuration by name and version
+//
+// This endpoint deletes a specific configuration by its name and version.
+//
+// Parameters:
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration
+//
+// Responses:
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
+func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	name := params["name"]
 	version := params["version"]
 
-	err := Handler.repository.DeleteByNameAndVersion(name, version)
+	err := h.repository.DeleteByNameAndVersion(name, version)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
+	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
 
-func (Handler ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+// FindByNameAndVersion retrieves a configuration by name and version
+// swagger:route GET /configuration/{name}/{version} configurations getConfigurationByNameAndVersion
+//
+// Get configuration by name and version
+//
+// This endpoint retrieves a specific configuration by its name and version.
+//
+// Parameters:
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration
+//
+// Responses:
+//   200: body:Configuration
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	name := params["name"]
 	version := params["version"]
 
-	configuration, err := Handler.repository.FindByNameAndVersion(name, version)
+	configuration, err := h.repository.FindByNameAndVersion(name, version)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configuration)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }

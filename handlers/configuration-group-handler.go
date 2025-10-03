@@ -19,86 +19,126 @@ func NewConfigurationGroupHandler(repository *repositories.ConfigurationGroupRep
 	return &ConfigurationGroupHandler{Repository: repository, ConfigurationRepository: configurationRepository}
 }
 
-func (Handler ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
+// Helper function to send error response
+func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.WriteHeader(statusCode)
+	errorResponse := models.ErrorResponse{Status: statusCode, Message: message}
+	json.NewEncoder(w).Encode(errorResponse)
+}
+
+// FindAll retrieves all configuration groups
+// swagger:route GET /configurationGroups configurationGroups getAllConfigurationGroups
+//
+// Get all configuration groups
+//
+// This endpoint retrieves all configuration groups in the system.
+//
+// Responses:
+//   200: body:[]ConfigurationGroup
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurationGroups := Handler.Repository.FindAll()
+	configurationGroups := h.Repository.FindAll()
 	err := json.NewEncoder(w).Encode(configurationGroups)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Request) {
+// FindById retrieves a configuration group by ID
+// swagger:route GET /configurationGroups/{id} configurationGroups getConfigurationGroupById
+//
+// Get configuration group by ID
+//
+// This endpoint retrieves a specific configuration group by its ID.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
+//
+// Responses:
+//   200: body:ConfigurationGroup
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := Handler.Repository.FindById(configurationGroupId)
+	configurationGroup, err := h.Repository.FindById(configurationGroupId)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configurationGroup)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
+// Delete removes a configuration group by ID
+// swagger:route DELETE /configurationGroups/{id} configurationGroups deleteConfigurationGroupById
+//
+// Delete configuration group by ID
+//
+// This endpoint deletes a specific configuration group by its ID.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
+//
+// Responses:
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
+func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
-	err := Handler.Repository.Delete(configurationGroupId)
+	err := h.Repository.Delete(configurationGroupId)
 
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
+	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
 
-func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
+// Create creates a new configuration group
+// swagger:route POST /configurationGroups configurationGroups createConfigurationGroup
+//
+// Create a new configuration group
+//
+// This endpoint creates a new configuration group with the provided data.
+//
+// Responses:
+//   200: body:ConfigurationGroup
+//   400: body:ErrorResponse
+//   404: body:ErrorResponse
+//   409: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var configurationGroupRequest dtos.ConfigurationGroupDto
 	_ = json.NewDecoder(r.Body).Decode(&configurationGroupRequest)
 
 	if len(configurationGroupRequest.ConfigurationList) < 1 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		errorResponse := map[string]string{"error": "you must define at least one configuration"}
-		err := json.NewEncoder(w).Encode(errorResponse)
-		if err != nil {
-			return
-		}
-
+		h.sendErrorResponse(w, http.StatusBadRequest, "you must define at least one configuration")
 		return
 	}
 
-	for _, configuration := range Handler.Repository.ConfigurationGroups {
+	for _, configuration := range h.Repository.ConfigurationGroups {
 		if configuration.Name == configurationGroupRequest.Name && configuration.Version == configurationGroupRequest.Version {
-			w.WriteHeader(http.StatusConflict)
-			errorResponse := map[string]string{"error": "configuration group already exists"}
-			json.NewEncoder(w).Encode(errorResponse)
+			h.sendErrorResponse(w, http.StatusConflict, "configuration group already exists")
 			return
 		}
 	}
@@ -110,42 +150,45 @@ func (Handler ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.R
 
 	for _, configurationItem := range configurationGroupRequest.ConfigurationList {
 		found := false
-		for _, configuration := range Handler.ConfigurationRepository.Configurations {
+		for _, configuration := range h.ConfigurationRepository.Configurations {
 			if configurationItem.Id == configuration.Id {
 				found = true
 				configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
 			}
 		}
 
-		if found == false {
-			w.WriteHeader(http.StatusNotFound)
-			errorResponse := map[string]string{"error": "configuration with the id " + configurationItem.Id + " does not exist"}
-			json.NewEncoder(w).Encode(errorResponse)
+		if !found {
+			h.sendErrorResponse(w, http.StatusNotFound, "configuration with the id "+configurationItem.Id+" does not exist")
 			return
 		}
 	}
 
 	newConfigurationGroup := models.ConfigurationGroup{Id: "", Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
-	configGroup, err := Handler.Repository.Create(&newConfigurationGroup)
+	configGroup, err := h.Repository.Create(&newConfigurationGroup)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configGroup)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
+// Update updates an existing configuration group
+// swagger:route PUT /configurationGroups/{id} configurationGroups updateConfigurationGroup
+//
+// Update configuration group by ID
+//
+// This endpoint updates an existing configuration group with the provided data.
+//
+// Responses:
+//   200: body:ConfigurationGroup
+//   400: body:ErrorResponse
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
@@ -154,11 +197,7 @@ func (Handler ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.R
 	json.NewDecoder(r.Body).Decode(&configGroupData)
 
 	if len(configGroupData.ConfigurationList) < 1 {
-		w.WriteHeader(http.StatusBadRequest)
-
-		errorResponse := map[string]string{"error": "you must define at least one configuration"}
-		json.NewEncoder(w).Encode(errorResponse)
-
+		h.sendErrorResponse(w, http.StatusBadRequest, "you must define at least one configuration")
 		return
 	}
 
@@ -166,43 +205,52 @@ func (Handler ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.R
 
 	for _, configurationItem := range configGroupData.ConfigurationList {
 		found := false
-		for _, configuration := range Handler.ConfigurationRepository.Configurations {
+		for _, configuration := range h.ConfigurationRepository.Configurations {
 			if configurationItem.Id == configuration.Id {
 				found = true
 				configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
 			}
 		}
 
-		if found == false {
-			w.WriteHeader(http.StatusNotFound)
-			errorResponse := map[string]string{"error": "configuration with the id " + configurationItem.Id + " does not exist"}
-			json.NewEncoder(w).Encode(errorResponse)
+		if !found {
+			h.sendErrorResponse(w, http.StatusNotFound, "configuration with the id "+configurationItem.Id+" does not exist")
 			return
 		}
 	}
 
 	updateConfigurationGroup := models.ConfigurationGroup{Id: configurationGroupId, Name: configGroupData.Name, Version: configGroupData.Version, Configurations: configurationGroupConfigurationList}
-	err := Handler.Repository.Update(configurationGroupId, &updateConfigurationGroup)
+	err := h.Repository.Update(configurationGroupId, &updateConfigurationGroup)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
+// FindByIdToDto retrieves a configuration group by ID as DTO
+// swagger:route GET /configurationGroups/dto/{id} configurationGroups getConfigurationGroupByIdToDto
+//
+// Get configuration group by ID as DTO
+//
+// This endpoint retrieves a specific configuration group by its ID and returns it as a DTO.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     type: string
+//     required: true
+//     description: The ID of the configuration group
+//
+// Responses:
+//   200: body:ConfigurationGroupDto
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := Handler.Repository.FindById(configurationGroupId)
+	configurationGroup, err := h.Repository.FindById(configurationGroupId)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -214,51 +262,83 @@ func (Handler ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r 
 	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
 	err = json.NewEncoder(w).Encode(configurationGroupDto)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+// FindByNameAndVersion retrieves a configuration group by name and version
+// swagger:route GET /configurationGroups/{name}/{version} configurationGroups getConfigurationGroupByNameAndVersion
+//
+// Get configuration group by name and version
+//
+// This endpoint retrieves a specific configuration group by its name and version.
+//
+// Parameters:
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
+//
+// Responses:
+//   200: body:ConfigurationGroup
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := Handler.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configurationGroup)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
+// FindByNameAndVersionToDto retrieves a configuration group by name and version as DTO
+// swagger:route GET /configurationGroups/dto/{name}/{version} configurationGroups getConfigurationGroupByNameAndVersionToDto
+//
+// Get configuration group by name and version as DTO
+//
+// This endpoint retrieves a specific configuration group by its name and version and returns it as a DTO.
+//
+// Parameters:
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
+//
+// Responses:
+//   200: body:ConfigurationGroupDto
+//   404: body:ErrorResponse
+//   500: body:ErrorResponse
+func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := Handler.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -270,29 +350,44 @@ func (Handler ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.Respon
 	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
 	err = json.NewEncoder(w).Encode(configurationGroupDto)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
-		return
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
-
-	return
 }
 
-func (Handler ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+// DeleteByNameAndVersion removes a configuration group by name and version
+// swagger:route DELETE /configurationGroups/{name}/{version} configurationGroups deleteConfigurationGroupByNameAndVersion
+//
+// Delete configuration group by name and version
+//
+// This endpoint deletes a specific configuration group by its name and version.
+//
+// Parameters:
+//   + name: name
+//     in: path
+//     type: string
+//     required: true
+//     description: The name of the configuration group
+//   + name: version
+//     in: path
+//     type: string
+//     required: true
+//     description: The version of the configuration group
+//
+// Responses:
+//   204: body:NoContentResponse
+//   404: body:ErrorResponse
+func (h ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	err := Handler.Repository.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	err := h.Repository.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		errorResponse := map[string]string{"error": err.Error()}
-		json.NewEncoder(w).Encode(errorResponse)
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
+	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
