@@ -3,12 +3,16 @@ module github.com/vukedd/config-service
 go 1.24.6
 
 require (
+	github.com/franela/goblin v0.0.0-20211003143422-0a4f594942bf
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
+	github.com/hashicorp/consul/api v1.32.1
+	golang.org/x/time v0.13.0
+)
+
+require (
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/hashicorp/consul/api v1.32.1 // indirect
-	github.com/franela/goblin v0.0.0-20211003143422-0a4f594942bf // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.5.0 // indirect
@@ -23,5 +27,4 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
 	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/time v0.13.0 // indirect
 )
