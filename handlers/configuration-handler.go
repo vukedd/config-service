@@ -9,23 +9,27 @@ import (
 	"github.com/vukedd/config-service/mappers"
 	"github.com/vukedd/config-service/models"
 	"github.com/vukedd/config-service/repositories"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ConfigurationHandler struct {
-	r *repositories.ConfigurationRepository
+    r      *repositories.ConfigurationRepository
+    Tracer trace.Tracer
 }
 
-func NewConfigurationHandler(r *repositories.ConfigurationRepository) *ConfigurationHandler {
-	return &ConfigurationHandler{
-		r: r,
-	}
+func NewConfigurationHandler(r *repositories.ConfigurationRepository, tracer trace.Tracer) *ConfigurationHandler {
+    return &ConfigurationHandler{
+        r:      r,
+        Tracer: tracer,
+    }
 }
 
 // Helper function to send error response
 func (h ConfigurationHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
-	w.WriteHeader(statusCode)
-	errorResponse := models.ErrorResponse{Status: statusCode, Message: message}
-	json.NewEncoder(w).Encode(errorResponse)
+    w.WriteHeader(statusCode)
+    errorResponse := models.ErrorResponse{Status: statusCode, Message: message}
+    json.NewEncoder(w).Encode(errorResponse)
 }
 
 // FindAll retrieves all configurations
@@ -40,18 +44,25 @@ func (h ConfigurationHandler) sendErrorResponse(w http.ResponseWriter, statusCod
 //	200: body:[]Configuration
 //	500: body:ErrorResponse
 func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	configurations, err := h.r.FindAll()
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.FindAll")
+    defer span.End()
 
-	err = json.NewEncoder(w).Encode(configurations)
+    w.Header().Set("Content-Type", "application/json")
+    configurations, err := h.r.FindAll(ctx)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+        return
+    }
 
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
-	}
+    err = json.NewEncoder(w).Encode(configurations)
+
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+    } else {
+        span.SetStatus(codes.Ok, "")
+    }
 }
 
 // FindById retrieves a configuration by ID
@@ -74,20 +85,27 @@ func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	vars := mux.Vars(r)
-	id := vars["id"]
-	configuration, err := h.r.FindById(id)
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.FindById")
+    defer span.End()
 
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
-		return
-	}
+    w.Header().Set("Content-Type", "application/json")
+    vars := mux.Vars(r)
+    id := vars["id"]
+    configuration, err := h.r.FindById(ctx, id)
 
-	err = json.NewEncoder(w).Encode(configuration)
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
-	}
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusNotFound, err.Error())
+        return
+    }
+
+    err = json.NewEncoder(w).Encode(configuration)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+    } else {
+        span.SetStatus(codes.Ok, "")
+    }
 }
 
 // Create creates a new configuration
@@ -104,26 +122,34 @@ func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 //	409: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.Create")
+    defer span.End()
 
-	var configuration dtos.CreateConfigurationDto
-	_ = json.NewDecoder(r.Body).Decode(&configuration)
+    w.Header().Set("Content-Type", "application/json")
 
-	if len(configuration.Parameters) < 1 {
-		h.sendErrorResponse(w, http.StatusBadRequest, "you must specify at least one parameter")
-		return
-	}
+    var configuration dtos.CreateConfigurationDto
+    _ = json.NewDecoder(r.Body).Decode(&configuration)
 
-	createdConfig, err := h.r.Create(mappers.ToConfiguration(&configuration))
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusConflict, err.Error())
-		return
-	}
+    if len(configuration.Parameters) < 1 {
+        span.SetStatus(codes.Error, "you must specify at least one parameter")
+        h.sendErrorResponse(w, http.StatusBadRequest, "you must specify at least one parameter")
+        return
+    }
 
-	err = json.NewEncoder(w).Encode(createdConfig)
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
-	}
+    createdConfig, err := h.r.Create(ctx, mappers.ToConfiguration(&configuration))
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusConflict, err.Error())
+        return
+    }
+
+    err = json.NewEncoder(w).Encode(createdConfig)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+    } else {
+        span.SetStatus(codes.Ok, "")
+    }
 }
 
 // Delete removes a configuration by ID
@@ -145,18 +171,23 @@ func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 //	204: body:NoContentResponse
 //	404: body:ErrorResponse
 func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	vars := mux.Vars(r)
-	id := vars["id"]
-	err := h.r.DeleteById(id)
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.Delete")
+    defer span.End()
 
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
-		return
-	}
+    w.Header().Set("Content-Type", "application/json")
+    vars := mux.Vars(r)
+    id := vars["id"]
+    err := h.r.DeleteById(ctx, id)
 
-	w.WriteHeader(http.StatusNoContent)
-	json.NewEncoder(w).Encode(models.NoContentResponse{})
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusNotFound, err.Error())
+        return
+    }
+
+    span.SetStatus(codes.Ok, "")
+    w.WriteHeader(http.StatusNoContent)
+    json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
 
 // DeleteByNameAndVersion removes a configuration by name and version
@@ -183,19 +214,24 @@ func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 //	204: body:NoContentResponse
 //	404: body:ErrorResponse
 func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	params := mux.Vars(r)
-	name := params["name"]
-	version := params["version"]
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.DeleteByNameAndVersion")
+    defer span.End()
 
-	err := h.r.DeleteByNameAndVersion(name, version)
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
-		return
-	}
+    w.Header().Set("Content-Type", "application/json")
+    params := mux.Vars(r)
+    name := params["name"]
+    version := params["version"]
 
-	w.WriteHeader(http.StatusNoContent)
-	json.NewEncoder(w).Encode(models.NoContentResponse{})
+    err := h.r.DeleteByNameAndVersion(ctx, name, version)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusNotFound, err.Error())
+        return
+    }
+
+    span.SetStatus(codes.Ok, "")
+    w.WriteHeader(http.StatusNoContent)
+    json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
 
 // FindByNameAndVersion retrieves a configuration by name and version
@@ -223,19 +259,26 @@ func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *h
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	params := mux.Vars(r)
-	name := params["name"]
-	version := params["version"]
+    ctx, span := h.Tracer.Start(r.Context(), "ConfigurationHandler.FindByNameAndVersion")
+    defer span.End()
 
-	configuration, err := h.r.FindByNameAndVersion(name, version)
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
-		return
-	}
+    w.Header().Set("Content-Type", "application/json")
+    params := mux.Vars(r)
+    name := params["name"]
+    version := params["version"]
 
-	err = json.NewEncoder(w).Encode(configuration)
-	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
-	}
+    configuration, err := h.r.FindByNameAndVersion(ctx, name, version)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusNotFound, err.Error())
+        return
+    }
+
+    err = json.NewEncoder(w).Encode(configuration)
+    if err != nil {
+        span.SetStatus(codes.Error, err.Error())
+        h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+    } else {
+        span.SetStatus(codes.Ok, "")
+    }
 }

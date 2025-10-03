@@ -10,15 +10,16 @@ import (
 	"github.com/vukedd/config-service/metrics"
 	"github.com/vukedd/config-service/middleware"
 	"github.com/vukedd/config-service/repositories"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 )
 
-func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api.Client) http.Handler {
-	configurationRepository := repositories.NewConfigurationRepository(consulClient)
-	configurationGroupRepository := repositories.NewConfigurationGroupRepository(consulClient)
+func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api.Client, tracer trace.Tracer) http.Handler {
+	configurationRepository := repositories.NewConfigurationRepository(consulClient, tracer)
+	configurationGroupRepository := repositories.NewConfigurationGroupRepository(consulClient, tracer)
 
-	configurationHandler := handlers.NewConfigurationHandler(configurationRepository)
-	configurationGroupHandler := handlers.NewConfigurationGroupHandler(configurationGroupRepository, configurationRepository)
+	configurationHandler := handlers.NewConfigurationHandler(configurationRepository, tracer)
+	configurationGroupHandler := handlers.NewConfigurationGroupHandler(configurationGroupRepository, configurationRepository, tracer)
 
 	// METRICS ENDPOINT
 	router.Path("/metrics").Handler(metrics.MetricsHandler())
