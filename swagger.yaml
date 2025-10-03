@@ -1,0 +1,650 @@
+basePath: /
+definitions:
+    Configuration:
+        description: Configuration represents a single configuration item
+        properties:
+            id:
+                description: |-
+                    The unique identifier for the configuration
+                    in: string
+                example: config-123
+                type: string
+                x-go-name: Id
+            name:
+                description: |-
+                    The name of the configuration
+                    in: string
+                example: Database Configuration
+                type: string
+                x-go-name: Name
+            parameters:
+                additionalProperties:
+                    type: string
+                description: |-
+                    Key-value pairs representing configuration parameters
+                    in: object
+                example:
+                    host: localhost
+                    port: "5432"
+                type: object
+                x-go-name: Parameters
+            version:
+                description: |-
+                    The version of the configuration
+                    in: string
+                example: v1.0.0
+                type: string
+                x-go-name: Version
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+    ConfigurationGroup:
+        description: ConfigurationGroup represents a group of related configurations
+        properties:
+            configurations:
+                description: |-
+                    Array of labeled configurations in this group
+                    in: array
+                items:
+                    $ref: '#/definitions/LabeledConfiguration'
+                type: array
+                x-go-name: Configurations
+            id:
+                description: |-
+                    The unique identifier for the configuration group
+                    in: string
+                example: group-456
+                type: string
+                x-go-name: Id
+            name:
+                description: |-
+                    The name of the configuration group
+                    in: string
+                example: Database Configurations
+                type: string
+                x-go-name: Name
+            version:
+                description: |-
+                    The version of the configuration group
+                    in: string
+                example: v2.1.0
+                type: string
+                x-go-name: Version
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+    ConfigurationGroupConfigurationDto:
+        description: ConfigurationGroupConfigurationDto represents a configuration reference in a group
+        properties:
+            id:
+                description: |-
+                    The ID of the configuration to include in the group
+                    in: string
+                example: config-123
+                type: string
+                x-go-name: Id
+            labels:
+                additionalProperties:
+                    type: string
+                description: |-
+                    Labels to apply to this configuration in the group context
+                    in: object
+                example:
+                    environment: production
+                    region: us-east-1
+                type: object
+                x-go-name: Labels
+        type: object
+        x-go-package: github.com/vukedd/config-service/dtos
+    ConfigurationGroupDto:
+        description: ConfigurationGroupDto represents the request/response body for configuration groups
+        properties:
+            configuration_list:
+                description: |-
+                    List of configurations to include in this group
+                    in: array
+                items:
+                    $ref: '#/definitions/ConfigurationGroupConfigurationDto'
+                minItems: 1
+                type: array
+                x-go-name: ConfigurationList
+            name:
+                description: |-
+                    The name of the configuration group
+                    in: string
+                example: Database Configurations
+                type: string
+                x-go-name: Name
+            version:
+                description: |-
+                    The version of the configuration group
+                    in: string
+                example: v2.1.0
+                type: string
+                x-go-name: Version
+        type: object
+        x-go-package: github.com/vukedd/config-service/dtos
+    CreateConfigurationDto:
+        description: CreateConfigurationDto represents the request body for creating a new configuration
+        properties:
+            name:
+                description: |-
+                    The name of the configuration
+                    in: string
+                example: Database Configuration
+                type: string
+                x-go-name: Name
+            parameters:
+                additionalProperties:
+                    type: string
+                description: |-
+                    Key-value pairs representing configuration parameters
+                    in: object
+                example:
+                    host: localhost
+                    port: "5432"
+                type: object
+                x-go-name: Parameters
+            version:
+                description: |-
+                    The version of the configuration
+                    in: string
+                example: v1.0.0
+                type: string
+                x-go-name: Version
+        type: object
+        x-go-package: github.com/vukedd/config-service/dtos
+    ErrorResponse:
+        description: ErrorResponse represents error response with status and message
+        properties:
+            message:
+                description: |-
+                    Error message
+                    in: string
+                example: Configuration not found
+                type: string
+                x-go-name: Message
+            status:
+                description: |-
+                    HTTP status code
+                    in: integer
+                example: 404
+                format: int64
+                type: integer
+                x-go-name: Status
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+    IdempotencyRecord:
+        description: IdempotencyRecord represents the status and result of an idempotent operation
+        properties:
+            body:
+                description: |-
+                    The response body of the completed operation
+                    in: string
+                example: '{"id": "config-123", "created": true}'
+                type: string
+                x-go-name: Body
+            status:
+                description: |-
+                    The current status of the operation
+                    in: string
+                enum:
+                    - in-progress
+                    - completed
+                example: completed
+                type: string
+                x-go-name: Status
+            status_code:
+                description: |-
+                    The HTTP status code of the completed operation
+                    in: integer
+                example: 200
+                format: int64
+                type: integer
+                x-go-name: StatusCode
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+    LabeledConfiguration:
+        description: LabeledConfiguration represents a configuration with associated labels
+        properties:
+            configuration:
+                $ref: '#/definitions/Configuration'
+            id:
+                description: |-
+                    The unique identifier for the labeled configuration
+                    in: string
+                example: labeled-config-789
+                type: string
+                x-go-name: Id
+            labels:
+                additionalProperties:
+                    type: string
+                description: |-
+                    Key-value pairs representing labels for this configuration
+                    in: object
+                example:
+                    environment: production
+                    region: us-east-1
+                type: object
+                x-go-name: Labels
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+    NoContentResponse:
+        description: NoContentResponse represents empty response for successful operations with no content
+        type: object
+        x-go-package: github.com/vukedd/config-service/models
+info:
+    description: |-
+        This is a RESTful API service for managing configurations and configuration groups.
+        The service provides endpoints for creating, reading, updating, and deleting
+        configurations with support for versioning and grouping.
+    title: Configuration Service API
+    version: 1.0.0
+paths:
+    /configuration/{name}/{version}:
+        delete:
+            description: This endpoint deletes a specific configuration by its name and version.
+            operationId: deleteConfigurationByNameAndVersion
+            parameters:
+                - description: The name of the configuration
+                  in: path
+                  name: name
+                  required: true
+                  type: string
+                - description: The version of the configuration
+                  in: path
+                  name: version
+                  required: true
+                  type: string
+            responses:
+                "204":
+                    description: NoContentResponse
+                    schema:
+                        $ref: '#/definitions/NoContentResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Delete configuration by name and version
+            tags:
+                - configurations
+        get:
+            description: This endpoint retrieves a specific configuration by its name and version.
+            operationId: getConfigurationByNameAndVersion
+            parameters:
+                - description: The name of the configuration
+                  in: path
+                  name: name
+                  required: true
+                  type: string
+                - description: The version of the configuration
+                  in: path
+                  name: version
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Configuration
+                    schema:
+                        $ref: '#/definitions/Configuration'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration by name and version
+            tags:
+                - configurations
+    /configurationGroups:
+        get:
+            description: This endpoint retrieves all configuration groups in the system.
+            operationId: getAllConfigurationGroups
+            responses:
+                "200":
+                    description: ConfigurationGroup
+                    schema:
+                        items:
+                            $ref: '#/definitions/ConfigurationGroup'
+                        type: array
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get all configuration groups
+            tags:
+                - configurationGroups
+        post:
+            description: This endpoint creates a new configuration group with the provided data.
+            operationId: createConfigurationGroup
+            parameters:
+                - description: Configuration group data to create
+                  in: body
+                  name: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/ConfigurationGroupDto'
+                  x-go-name: Body
+            responses:
+                "200":
+                    description: ConfigurationGroup
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroup'
+                "400":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "409":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Create a new configuration group
+            tags:
+                - configurationGroups
+    /configurationGroups/{id}:
+        delete:
+            description: This endpoint deletes a specific configuration group by its ID.
+            operationId: deleteConfigurationGroupById
+            parameters:
+                - description: The ID of the configuration group
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+            responses:
+                "204":
+                    description: NoContentResponse
+                    schema:
+                        $ref: '#/definitions/NoContentResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Delete configuration group by ID
+            tags:
+                - configurationGroups
+        get:
+            description: This endpoint retrieves a specific configuration group by its ID.
+            operationId: getConfigurationGroupById
+            parameters:
+                - description: The ID of the configuration group
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: ConfigurationGroup
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroup'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration group by ID
+            tags:
+                - configurationGroups
+        put:
+            description: This endpoint updates an existing configuration group with the provided data.
+            operationId: updateConfigurationGroup
+            parameters:
+                - description: The ID of the configuration group
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+                  x-go-name: ID
+                - description: Configuration group data to update
+                  in: body
+                  name: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/ConfigurationGroupDto'
+                  x-go-name: Body
+            responses:
+                "200":
+                    description: ConfigurationGroup
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroup'
+                "400":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Update configuration group by ID
+            tags:
+                - configurationGroups
+    /configurationGroups/{name}/{version}:
+        delete:
+            description: This endpoint deletes a specific configuration group by its name and version.
+            operationId: deleteConfigurationGroupByNameAndVersion
+            parameters:
+                - description: The name of the configuration group
+                  in: path
+                  name: name
+                  required: true
+                  type: string
+                - description: The version of the configuration group
+                  in: path
+                  name: version
+                  required: true
+                  type: string
+            responses:
+                "204":
+                    description: NoContentResponse
+                    schema:
+                        $ref: '#/definitions/NoContentResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Delete configuration group by name and version
+            tags:
+                - configurationGroups
+        get:
+            description: This endpoint retrieves a specific configuration group by its name and version.
+            operationId: getConfigurationGroupByNameAndVersion
+            parameters:
+                - description: The name of the configuration group
+                  in: path
+                  name: name
+                  required: true
+                  type: string
+                - description: The version of the configuration group
+                  in: path
+                  name: version
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: ConfigurationGroup
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroup'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration group by name and version
+            tags:
+                - configurationGroups
+    /configurationGroups/dto/{id}:
+        get:
+            description: This endpoint retrieves a specific configuration group by its ID and returns it as a DTO.
+            operationId: getConfigurationGroupByIdToDto
+            parameters:
+                - description: The ID of the configuration group
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: ConfigurationGroupDto
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroupDto'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration group by ID as DTO
+            tags:
+                - configurationGroups
+    /configurationGroups/dto/{name}/{version}:
+        get:
+            description: This endpoint retrieves a specific configuration group by its name and version and returns it as a DTO.
+            operationId: getConfigurationGroupByNameAndVersionToDto
+            parameters:
+                - description: The name of the configuration group
+                  in: path
+                  name: name
+                  required: true
+                  type: string
+                - description: The version of the configuration group
+                  in: path
+                  name: version
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: ConfigurationGroupDto
+                    schema:
+                        $ref: '#/definitions/ConfigurationGroupDto'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration group by name and version as DTO
+            tags:
+                - configurationGroups
+    /configurations:
+        get:
+            description: This endpoint retrieves all configurations in the system.
+            operationId: getAllConfigurations
+            responses:
+                "200":
+                    description: Configuration
+                    schema:
+                        items:
+                            $ref: '#/definitions/Configuration'
+                        type: array
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get all configurations
+            tags:
+                - configurations
+        post:
+            description: This endpoint creates a new configuration with the provided data.
+            operationId: createConfiguration
+            parameters:
+                - description: Configuration data to create
+                  in: body
+                  name: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/CreateConfigurationDto'
+                  x-go-name: Body
+            responses:
+                "200":
+                    description: Configuration
+                    schema:
+                        $ref: '#/definitions/Configuration'
+                "400":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "409":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Create a new configuration
+            tags:
+                - configurations
+    /configurations/{id}:
+        delete:
+            description: This endpoint deletes a specific configuration by its ID.
+            operationId: deleteConfigurationById
+            parameters:
+                - description: The ID of the configuration
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+            responses:
+                "204":
+                    description: NoContentResponse
+                    schema:
+                        $ref: '#/definitions/NoContentResponse'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Delete configuration by ID
+            tags:
+                - configurations
+        get:
+            description: This endpoint retrieves a specific configuration by its ID.
+            operationId: getConfigurationById
+            parameters:
+                - description: The ID of the configuration
+                  in: path
+                  name: id
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: Configuration
+                    schema:
+                        $ref: '#/definitions/Configuration'
+                "404":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+                "500":
+                    description: ErrorResponse
+                    schema:
+                        $ref: '#/definitions/ErrorResponse'
+            summary: Get configuration by ID
+            tags:
+                - configurations
+produces:
+    - application/json
+schemes:
+    - http
+swagger: "2.0"

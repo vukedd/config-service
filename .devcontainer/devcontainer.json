@@ -5,11 +5,12 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
 		"ghcr.io/devcontainers/features/go:1": {
 			"golangciLintVersion": "latest",
-			"version": "1.24.6"
+			"version": "1.25.0"
 		}
 	},
 	"updateContentCommand": "bash .devcontainer/scripts/update-content.sh",
 	"forwardPorts": [
+		9090,
 		8000,
 		8500,
 		8600

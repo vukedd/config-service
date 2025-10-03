@@ -1,3 +1,18 @@
+// Configuration Service API
+//
+// This is a RESTful API service for managing configurations and configuration groups.
+// The service provides endpoints for creating, reading, updating, and deleting
+// configurations with support for versioning and grouping.
+//
+// Schemes: http
+// Host: localhost:8000
+// BasePath: /
+// Version: 1.0.0
+//
+// Produces:
+// - application/json
+//
+// swagger:meta
 package main
 
 import (
