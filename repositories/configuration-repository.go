@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
@@ -22,13 +23,15 @@ type ConfigurationRepository struct {
 }
 
 func NewConfigurationRepository(consulClient *api.Client) *ConfigurationRepository {
-	return &ConfigurationRepository{
+	r := &ConfigurationRepository{
 		ConsulClient: &ConsulClient{consulClient},
 	}
+	r.prepopulateData()
+	return r
 }
 
-func (c *ConfigurationRepository) kvKeyFromConfiguration(config *models.Configuration) string {
-	return c.kvKey(consulConfigsKey, config.Name, config.Version)
+func (r *ConfigurationRepository) kvKeyFromConfiguration(config *models.Configuration) string {
+	return r.kvKey(consulConfigsKey, config.Name, config.Version)
 }
 
 // Find all configurations
@@ -52,8 +55,8 @@ func (r *ConfigurationRepository) FindAll() ([]*models.Configuration, error) {
 	return configs, nil
 }
 
-func (Repository *ConfigurationRepository) FindById(id string) (*models.Configuration, error) {
-	configurations, err := Repository.FindAll()
+func (r *ConfigurationRepository) FindById(id string) (*models.Configuration, error) {
+	configurations, err := r.FindAll()
 	if err != nil {
 		return nil, err
 	}
@@ -131,4 +134,28 @@ func (r *ConfigurationRepository) FindByNameAndVersion(name, version string) (*m
 		return nil, err
 	}
 	return &config, nil
+}
+
+func (r *ConfigurationRepository) prepopulateData() {
+	// If data already exists or an error occurs, just skip it
+	pairs, _, err := r.consul.KV().List(consulConfigsKey, nil)
+	if err != nil || len(pairs) > 0 {
+		return
+	}
+
+	for i := 0; i < 4; i++ {
+		config := models.Configuration{
+			Id:      uuid.New().String(),
+			Name:    "config-" + strconv.Itoa(i),
+			Version: "1.0." + strconv.Itoa(i),
+			Parameters: map[string]string{
+				"db_url": "db:3306/db",
+			},
+		}
+
+		_, err := r.Create(&config)
+		if err != nil {
+			return
+		}
+	}
 }

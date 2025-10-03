@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/vukedd/config-service/dtos"
 	"github.com/vukedd/config-service/models"
@@ -36,6 +40,7 @@ func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, stat
 // # Get all configuration groups
 //
 // This endpoint retrieves all configuration groups in the system.
+// You can filter by labels with ?labels=key:value or ?labels=key:value;key2:value
 //
 // Responses:
 //
@@ -43,7 +48,25 @@ func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, stat
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurationGroups, err := h.gr.FindAll()
+
+	q, err := url.ParseQuery(strings.ReplaceAll(r.URL.RawQuery, ";", "%3B"))
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var configurationGroups []*models.ConfigurationGroup
+	labels := q.Get("labels")
+	if labels != "" {
+		configurationGroups, err = h.gr.FindByLabel(labels)
+		if errors.Is(err, repositories.ErrDuplicateLabel) {
+			h.sendErrorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	} else {
+		configurationGroups, err = h.gr.FindAll()
+	}
+
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
@@ -81,7 +104,7 @@ func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Reque
 	configurationGroupId := params["id"]
 
 	configurationGroup, err := h.gr.FindById(configurationGroupId)
-	if err != nil {
+	if err == repositories.ErrConfigurationNotFound {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -116,9 +139,68 @@ func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request
 	configurationGroupId := params["id"]
 	err := h.gr.DeleteById(configurationGroupId)
 
-	if err != nil {
+	if err == repositories.ErrConfigurationNotFound {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
+	}
+
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	json.NewEncoder(w).Encode(models.NoContentResponse{})
+}
+
+// DeleteByLabel removes a configuration group by label filtering
+// swagger:route DELETE /configurationGroups configurationGroups deleteConfigurationGroupByLabel
+//
+// # Delete configuration group by label filtering
+//
+// This endpoint deletes configuration groups that match the provided label with both key AND value pair.
+// Add ?labels=key:value or ?labels=key:value;key2:value
+//
+// Responses:
+//
+//	204: body:NoContentResponse
+//	400: body:ErrorResponse
+func (h ConfigurationGroupHandler) DeleteByLabel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	q, err := url.ParseQuery(strings.ReplaceAll(r.URL.RawQuery, ";", "%3B"))
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	labels := q.Get("labels")
+	if len(labels) < 1 {
+		h.sendErrorResponse(w, http.StatusBadRequest, "you must specify at least one label")
+		return
+	}
+
+	list, err := h.gr.FindByLabel(labels)
+	if errors.Is(err, repositories.ErrDuplicateLabel) {
+		h.sendErrorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if len(list) < 1 {
+		h.sendErrorResponse(w, http.StatusNotFound, "configuration group not found")
+		return
+	}
+
+	for _, cg := range list {
+		err = h.gr.DeleteById(cg.Id)
+		if err != nil {
+			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -177,10 +259,14 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
+		configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{
+			Id:            uuid.New().String(),
+			Configuration: configuration,
+			Labels:        configurationItem.Labels,
+		})
 	}
 
-	newConfigurationGroup := models.ConfigurationGroup{Id: "", Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
+	newConfigurationGroup := models.ConfigurationGroup{Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
 	configGroup, err := h.gr.Create(&newConfigurationGroup)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())

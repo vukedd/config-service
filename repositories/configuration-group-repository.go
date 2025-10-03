@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
@@ -15,6 +16,7 @@ const consulGroupsKey = "groups"
 var (
 	ErrConfigurationGroupNotFound = errors.New("configuration group not found")
 	ErrConfigurationGroupExists   = errors.New("configuration group already exists")
+	ErrDuplicateLabel             = errors.New("duplicate label")
 )
 
 type ConfigurationGroupRepository struct {
@@ -63,6 +65,54 @@ func (r *ConfigurationGroupRepository) FindById(id string) (*models.Configuratio
 		}
 	}
 	return nil, ErrConfigurationGroupNotFound
+}
+
+// extractLabels converts list argument of (key:value;key2:value) to map[string]string
+func extractLabels(list string) (map[string]string, error) {
+	split := strings.Split(list, ";")
+	values := make(map[string]string)
+
+	for _, s := range split {
+		kv := strings.Split(s, ":")
+		if _, ok := values[kv[0]]; ok {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateLabel, kv[0])
+		}
+
+		values[kv[0]] = kv[1]
+	}
+
+	return values, nil
+}
+
+func (r *ConfigurationGroupRepository) FindByLabel(list string) ([]*models.ConfigurationGroup, error) {
+	groups, err := r.FindAll()
+	if err != nil {
+		return nil, err
+	}
+
+	labels, err := extractLabels(list)
+	if err != nil {
+		return nil, err
+	}
+
+	cg := []*models.ConfigurationGroup{}
+	for _, group := range groups {
+		for _, lc := range group.Configurations {
+			found := true
+			for k, v := range labels {
+				if lc.Labels[k] != v {
+					found = false
+					break
+				}
+			}
+
+			if found {
+				cg = append(cg, group)
+			}
+		}
+	}
+
+	return cg, nil
 }
 
 func (r *ConfigurationGroupRepository) Create(g *models.ConfigurationGroup) (*models.ConfigurationGroup, error) {

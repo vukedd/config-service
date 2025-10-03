@@ -51,6 +51,7 @@ func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api
 	router.Handle("/configurationGroups/{id}", middleware.RateLimit(limiter)(http.HandlerFunc(configurationGroupHandler.Delete))).Methods("DELETE")
 	router.Handle("/configurationGroups", middleware.IdempotencyMiddleware(consulClient)(middleware.RateLimit(limiter)(http.HandlerFunc(configurationGroupHandler.Create)))).Methods("POST")
 	router.Handle("/configurationGroups/{id}", middleware.RateLimit(limiter)(http.HandlerFunc(configurationGroupHandler.Update))).Methods("PUT")
+	router.Handle("/configurationGroups", middleware.IdempotencyMiddleware(consulClient)(middleware.RateLimit(limiter)(http.HandlerFunc(configurationGroupHandler.DeleteByLabel)))).Methods("DELETE")
 
 	// VERSIONING OPERATIONS CONFIGURATION GROUP
 	router.HandleFunc("/configurationGroups/{name}/{version}", configurationGroupHandler.FindByNameAndVersion).Methods("GET")
