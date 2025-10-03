@@ -1,79 +1,134 @@
 package repositories
 
 import (
+	"encoding/json"
 	"errors"
-	"strconv"
+	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/consul/api"
 	"github.com/vukedd/config-service/models"
 )
 
+const consulConfigsKey = "configs"
+
+var (
+	ErrConfigurationNotFound = errors.New("configuration not found")
+	ErrConfigurationExists   = errors.New("configuration already exists")
+)
+
 type ConfigurationRepository struct {
-	Configurations []*models.Configuration
+	*ConsulClient
 }
 
-func NewRepository() *ConfigurationRepository {
-	repository := ConfigurationRepository{}
-	for i := 0; i < 4; i++ {
-		repository.Configurations = append(repository.Configurations, &(models.Configuration{Id: uuid.New().String(), Name: "Config " + strconv.Itoa(i), Version: "1.0." + strconv.Itoa(i), Parameters: map[string]string{"db_url": "db:3306/db"}}))
+func NewConfigurationRepository(consulClient *api.Client) *ConfigurationRepository {
+	return &ConfigurationRepository{
+		ConsulClient: &ConsulClient{consulClient},
+	}
+}
+
+func (c *ConfigurationRepository) kvKeyFromConfiguration(config *models.Configuration) string {
+	return c.kvKey(consulConfigsKey, config.Name, config.Version)
+}
+
+// Find all configurations
+func (r *ConfigurationRepository) FindAll() ([]*models.Configuration, error) {
+	kv := r.consul.KV()
+	pairs, _, err := kv.List(fmt.Sprintf("%s/", consulConfigsKey), nil)
+	if err != nil {
+		return nil, err
 	}
 
-	return &repository
-}
+	configs := []*models.Configuration{}
+	for _, pair := range pairs {
+		var c models.Configuration
+		if err := json.Unmarshal(pair.Value, &c); err != nil {
+			continue // skip malformed entries
+		}
 
-func (Repository *ConfigurationRepository) FindAll() []*models.Configuration {
-	return Repository.Configurations
+		configs = append(configs, &c)
+	}
+
+	return configs, nil
 }
 
 func (Repository *ConfigurationRepository) FindById(id string) (*models.Configuration, error) {
-	for _, configuration := range Repository.Configurations {
+	configurations, err := Repository.FindAll()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, configuration := range configurations {
 		if configuration.Id == id {
 			return configuration, nil
 		}
 	}
-	return &models.Configuration{Id: "", Name: "", Version: "", Parameters: map[string]string{}}, errors.New("configuration not found")
+	return nil, ErrConfigurationNotFound
 }
 
-func (Repository *ConfigurationRepository) Create(Configuration models.Configuration) (*models.Configuration, error) {
-	for _, configuration := range Repository.Configurations {
-		if configuration.Name == Configuration.Name && configuration.Version == Configuration.Version {
-			return &Configuration, errors.New("configuration already exists")
+// Create a new configuration
+func (r *ConfigurationRepository) Create(c *models.Configuration) (*models.Configuration, error) {
+	kv := r.consul.KV()
+	key := r.kvKeyFromConfiguration(c)
+
+	existing, _, _ := kv.Get(key, nil)
+	if existing != nil {
+		return nil, ErrConfigurationExists
+	}
+
+	c.Id = uuid.New().String()
+	data, _ := json.Marshal(c)
+
+	p := &api.KVPair{Key: key, Value: data}
+	_, err := kv.Put(p, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// Delete by name and version
+func (r *ConfigurationRepository) DeleteByNameAndVersion(name, version string) error {
+	kv := r.consul.KV()
+	key := r.kvKey(consulConfigsKey, name, version)
+	_, err := kv.Delete(key, nil)
+	return err
+}
+
+func (r *ConfigurationRepository) DeleteById(id string) error {
+	configs, err := r.FindAll()
+	if err != nil {
+		return err
+	}
+
+	kv := r.consul.KV()
+	for _, c := range configs {
+		if c.Id == id {
+			key := r.kvKeyFromConfiguration(c)
+			_, err := kv.Delete(key, nil)
+			return err
 		}
 	}
 
-	Configuration.Id = uuid.New().String()
-	Repository.Configurations = append(Repository.Configurations, &Configuration)
-	return &Configuration, nil
+	return ErrConfigurationNotFound
 }
 
-func (Repository *ConfigurationRepository) Delete(id string) error {
-	for i, configuration := range Repository.Configurations {
-		if configuration.Id == id {
-			Repository.Configurations = append(Repository.Configurations[:i], Repository.Configurations[i+1:]...)
-			return nil
-		}
+// Find by name and version
+func (r *ConfigurationRepository) FindByNameAndVersion(name, version string) (*models.Configuration, error) {
+	kv := r.consul.KV()
+	key := r.kvKey(consulConfigsKey, name, version)
+	pair, _, err := kv.Get(key, nil)
+	if err != nil {
+		return nil, err
+	}
+	if pair == nil {
+		return nil, ErrConfigurationNotFound
 	}
 
-	return errors.New("configuration not found")
-}
-
-func (Repository *ConfigurationRepository) DeleteByNameAndVersion(name string, version string) error {
-	for i, configuration := range Repository.Configurations {
-		if configuration.Name == name && configuration.Version == version {
-			Repository.Configurations = append(Repository.Configurations[:i], Repository.Configurations[i+1:]...)
-			return nil
-		}
+	var config models.Configuration
+	if err := json.Unmarshal(pair.Value, &config); err != nil {
+		return nil, err
 	}
-
-	return errors.New("configuration not found")
-}
-
-func (Repository *ConfigurationRepository) FindByNameAndVersion(name string, version string) (*models.Configuration, error) {
-	for _, configuration := range Repository.Configurations {
-		if configuration.Name == name && configuration.Version == version {
-			return configuration, nil
-		}
-	}
-
-	return nil, errors.New("configuration not found")
+	return &config, nil
 }

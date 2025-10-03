@@ -12,12 +12,12 @@ import (
 )
 
 type ConfigurationHandler struct {
-	repository *repositories.ConfigurationRepository
+	r *repositories.ConfigurationRepository
 }
 
-func NewConfigurationHandler(repository *repositories.ConfigurationRepository) *ConfigurationHandler {
+func NewConfigurationHandler(r *repositories.ConfigurationRepository) *ConfigurationHandler {
 	return &ConfigurationHandler{
-		repository: repository,
+		r: r,
 	}
 }
 
@@ -31,18 +31,23 @@ func (h ConfigurationHandler) sendErrorResponse(w http.ResponseWriter, statusCod
 // FindAll retrieves all configurations
 // swagger:route GET /configurations configurations getAllConfigurations
 //
-// Get all configurations
+// # Get all configurations
 //
 // This endpoint retrieves all configurations in the system.
 //
 // Responses:
-//   200: body:[]Configuration
-//   500: body:ErrorResponse
+//
+//	200: body:[]Configuration
+//	500: body:ErrorResponse
 func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurations := h.repository.FindAll()
+	configurations, err := h.r.FindAll()
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	err := json.NewEncoder(w).Encode(configurations)
+	err = json.NewEncoder(w).Encode(configurations)
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
@@ -52,26 +57,27 @@ func (h ConfigurationHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 // FindById retrieves a configuration by ID
 // swagger:route GET /configurations/{id} configurations getConfigurationById
 //
-// Get configuration by ID
+// # Get configuration by ID
 //
 // This endpoint retrieves a specific configuration by its ID.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     type: string
 //     required: true
 //     description: The ID of the configuration
 //
 // Responses:
-//   200: body:Configuration
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:Configuration
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	configuration, err := h.repository.FindById(id)
+	configuration, err := h.r.FindById(id)
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
@@ -87,15 +93,16 @@ func (h ConfigurationHandler) FindById(w http.ResponseWriter, r *http.Request) {
 // Create creates a new configuration
 // swagger:route POST /configurations configurations createConfiguration
 //
-// Create a new configuration
+// # Create a new configuration
 //
 // This endpoint creates a new configuration with the provided data.
 //
 // Responses:
-//   200: body:Configuration
-//   400: body:ErrorResponse
-//   409: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:Configuration
+//	400: body:ErrorResponse
+//	409: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -107,7 +114,7 @@ func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdConfig, err := h.repository.Create(*(mappers.ToConfiguration(&configuration)))
+	createdConfig, err := h.r.Create(mappers.ToConfiguration(&configuration))
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusConflict, err.Error())
 		return
@@ -122,25 +129,26 @@ func (h ConfigurationHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Delete removes a configuration by ID
 // swagger:route DELETE /configurations/{id} configurations deleteConfigurationById
 //
-// Delete configuration by ID
+// # Delete configuration by ID
 //
 // This endpoint deletes a specific configuration by its ID.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     type: string
 //     required: true
 //     description: The ID of the configuration
 //
 // Responses:
-//   204: body:NoContentResponse
-//   404: body:ErrorResponse
+//
+//	204: body:NoContentResponse
+//	404: body:ErrorResponse
 func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	id := vars["id"]
-	err := h.repository.Delete(id)
+	err := h.r.DeleteById(id)
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
@@ -154,32 +162,33 @@ func (h ConfigurationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // DeleteByNameAndVersion removes a configuration by name and version
 // swagger:route DELETE /configuration/{name}/{version} configurations deleteConfigurationByNameAndVersion
 //
-// Delete configuration by name and version
+// # Delete configuration by name and version
 //
 // This endpoint deletes a specific configuration by its name and version.
 //
 // Parameters:
-//   + name: name
+//   - name: name
 //     in: path
 //     type: string
 //     required: true
 //     description: The name of the configuration
-//   + name: version
+//   - name: version
 //     in: path
 //     type: string
 //     required: true
 //     description: The version of the configuration
 //
 // Responses:
-//   204: body:NoContentResponse
-//   404: body:ErrorResponse
+//
+//	204: body:NoContentResponse
+//	404: body:ErrorResponse
 func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	name := params["name"]
 	version := params["version"]
 
-	err := h.repository.DeleteByNameAndVersion(name, version)
+	err := h.r.DeleteByNameAndVersion(name, version)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
@@ -192,33 +201,34 @@ func (h ConfigurationHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *h
 // FindByNameAndVersion retrieves a configuration by name and version
 // swagger:route GET /configuration/{name}/{version} configurations getConfigurationByNameAndVersion
 //
-// Get configuration by name and version
+// # Get configuration by name and version
 //
 // This endpoint retrieves a specific configuration by its name and version.
 //
 // Parameters:
-//   + name: name
+//   - name: name
 //     in: path
 //     type: string
 //     required: true
 //     description: The name of the configuration
-//   + name: version
+//   - name: version
 //     in: path
 //     type: string
 //     required: true
 //     description: The version of the configuration
 //
 // Responses:
-//   200: body:Configuration
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:Configuration
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	name := params["name"]
 	version := params["version"]
 
-	configuration, err := h.repository.FindByNameAndVersion(name, version)
+	configuration, err := h.r.FindByNameAndVersion(name, version)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return

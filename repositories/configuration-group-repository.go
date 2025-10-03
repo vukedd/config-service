@@ -1,128 +1,145 @@
 package repositories
 
 import (
+	"encoding/json"
 	"errors"
-	"strconv"
+	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/consul/api"
 	"github.com/vukedd/config-service/models"
 )
 
+const consulGroupsKey = "groups"
+
+var (
+	ErrConfigurationGroupNotFound = errors.New("configuration group not found")
+	ErrConfigurationGroupExists   = errors.New("configuration group already exists")
+)
+
 type ConfigurationGroupRepository struct {
-	ConfigurationGroups []*models.ConfigurationGroup
+	*ConsulClient
 }
 
-func NewConfigurationGroupRepository() *ConfigurationGroupRepository {
-	configurationGroupRepository := ConfigurationGroupRepository{}
-	for i := 0; i < 4; i++ {
-		configurationGroupRepository.ConfigurationGroups = append(configurationGroupRepository.ConfigurationGroups, &models.ConfigurationGroup{
-			uuid.New().String(),
-			"Configuration group" + strconv.Itoa(i),
-			"1.0." + strconv.Itoa(i),
-			[]*models.LabeledConfiguration{
-				&(models.LabeledConfiguration{
-					Id: uuid.New().String(),
-					Configuration: &models.Configuration{
-						Id:         uuid.New().String(),
-						Name:       "Config " + strconv.Itoa(i+1),
-						Version:    "1.0." + strconv.Itoa(i+1),
-						Parameters: map[string]string{"db_url": "db:330" + strconv.Itoa(i) + "/db"},
-					},
-					Labels: map[string]string{"env": "production", "region": "eu-central"},
-				}),
-				&(models.LabeledConfiguration{
-					Id: uuid.New().String(),
-					Configuration: &models.Configuration{
-						Id:         uuid.New().String(),
-						Name:       "Config " + strconv.Itoa(i+1),
-						Version:    "1.0." + strconv.Itoa(i+1),
-						Parameters: map[string]string{"db_url": "db:330" + strconv.Itoa(i) + "/db"},
-					},
-					Labels: map[string]string{"env": "production", "region": "eu-central"},
-				}),
-				&(models.LabeledConfiguration{
-					Id: uuid.New().String(),
-					Configuration: &models.Configuration{
-						Id:         uuid.New().String(),
-						Name:       "Config " + strconv.Itoa(i+1),
-						Version:    "1.0." + strconv.Itoa(i+1),
-						Parameters: map[string]string{"db_url": "db:330" + strconv.Itoa(i) + "/db"},
-					},
-					Labels: map[string]string{"env": "production", "region": "eu-central"},
-				}),
-			},
-		})
+func (c *ConfigurationGroupRepository) kvKeyFromConfigurationGroup(configGroup *models.ConfigurationGroup) string {
+	return c.kvKey(consulGroupsKey, configGroup.Name, configGroup.Version)
+}
+
+func NewConfigurationGroupRepository(consulClient *api.Client) *ConfigurationGroupRepository {
+	return &ConfigurationGroupRepository{
+		ConsulClient: &ConsulClient{consulClient},
+	}
+}
+
+func (r *ConfigurationGroupRepository) FindAll() ([]*models.ConfigurationGroup, error) {
+	kv := r.consul.KV()
+	pairs, _, err := kv.List(fmt.Sprintf("%s/", consulConfigsKey), nil)
+	if err != nil {
+		return nil, err
 	}
 
-	return &configurationGroupRepository
+	configs := []*models.ConfigurationGroup{}
+	for _, pair := range pairs {
+		var c models.ConfigurationGroup
+		if err := json.Unmarshal(pair.Value, &c); err != nil {
+			continue // skip malformed entries
+		}
+
+		configs = append(configs, &c)
+	}
+
+	return configs, nil
 }
 
-func (Repository *ConfigurationGroupRepository) FindAll() []*models.ConfigurationGroup {
-	return Repository.ConfigurationGroups
-}
+func (r *ConfigurationGroupRepository) FindById(Id string) (*models.ConfigurationGroup, error) {
+	groups, err := r.FindAll()
+	if err != nil {
+		return nil, err
+	}
 
-func (Repository *ConfigurationGroupRepository) FindById(Id string) (*models.ConfigurationGroup, error) {
-	for _, configurationGroup := range Repository.ConfigurationGroups {
-		if configurationGroup.Id == Id {
-			return configurationGroup, nil
+	for _, group := range groups {
+		if group.Id == Id {
+			return group, nil
 		}
 	}
-	return &models.ConfigurationGroup{"", "", "", []*models.LabeledConfiguration{}}, errors.New("configuration group not found")
+	return nil, ErrConfigurationGroupNotFound
 }
 
-func (Repository *ConfigurationGroupRepository) Delete(Id string) error {
-	for _, configurationGroup := range Repository.ConfigurationGroups {
-		if configurationGroup.Id == Id {
-			Repository.ConfigurationGroups = append(Repository.ConfigurationGroups[:0], Repository.ConfigurationGroups[1:]...)
-			return nil
+func (r *ConfigurationGroupRepository) Create(g *models.ConfigurationGroup) (*models.ConfigurationGroup, error) {
+	kv := r.consul.KV()
+	key := r.kvKeyFromConfigurationGroup(g)
+
+	existing, _, _ := kv.Get(key, nil)
+	if existing != nil {
+		return nil, ErrConfigurationGroupExists
+	}
+
+	g.Id = uuid.New().String()
+	data, _ := json.Marshal(g)
+
+	p := &api.KVPair{Key: key, Value: data}
+	_, err := kv.Put(p, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return g, nil
+}
+
+func (r *ConfigurationGroupRepository) DeleteByNameAndVersion(name string, version string) error {
+	kv := r.consul.KV()
+	key := r.kvKey(consulGroupsKey, name, version)
+	_, err := kv.Delete(key, nil)
+	return err
+}
+
+func (r *ConfigurationGroupRepository) DeleteById(id string) error {
+	groups, err := r.FindAll()
+	if err != nil {
+		return err
+	}
+
+	kv := r.consul.KV()
+	for _, g := range groups {
+		if g.Id == id {
+			key := r.kvKeyFromConfigurationGroup(g)
+			_, err := kv.Delete(key, nil)
+			return err
 		}
 	}
-	return errors.New("configuration group not found")
+
+	return ErrConfigurationNotFound
 }
 
-func (Repository *ConfigurationGroupRepository) Create(ConfigurationGroup *models.ConfigurationGroup) (*models.ConfigurationGroup, error) {
-	ConfigurationGroup.Id = uuid.New().String()
-	for _, configuration := range ConfigurationGroup.Configurations {
-		configuration.Id = uuid.New().String()
+// Update updates an existing configuration group
+// with new configurations from `cg`
+func (r *ConfigurationGroupRepository) Update(Id string, cg *models.ConfigurationGroup) error {
+	g, err := r.FindById(Id)
+	if err != nil {
+		return err
 	}
 
-	Repository.ConfigurationGroups = append(Repository.ConfigurationGroups, ConfigurationGroup)
-	return ConfigurationGroup, nil
-}
-
-func (Repository *ConfigurationGroupRepository) Update(Id string, ConfigurationGroup *models.ConfigurationGroup) error {
-	targetIndex := -1
-	for i, configuration := range Repository.ConfigurationGroups {
-		if configuration.Id == Id {
-			targetIndex = i
-			break
-		}
-	}
-
-	if targetIndex == -1 {
-		return errors.New("configuration group not found")
-	}
-
-	Repository.ConfigurationGroups[targetIndex].Configurations = ConfigurationGroup.Configurations
+	g.Configurations = cg.Configurations
 	return nil
 }
 
-func (Repository *ConfigurationGroupRepository) FindByNameAndVersion(name string, version string) (*models.ConfigurationGroup, error) {
-	for _, configurationGroup := range Repository.ConfigurationGroups {
-		if configurationGroup.Name == name && configurationGroup.Version == version {
-			return configurationGroup, nil
-		}
+func (r *ConfigurationGroupRepository) FindByNameAndVersion(name string, version string) (*models.ConfigurationGroup, error) {
+	kv := r.consul.KV()
+	key := r.kvKey(consulGroupsKey, name, version)
+
+	pair, _, err := kv.Get(key, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("configuration group not found")
-}
-
-func (Repository *ConfigurationGroupRepository) DeleteByNameAndVersion(name string, version string) error {
-	for _, configurationGroup := range Repository.ConfigurationGroups {
-		if configurationGroup.Name == name && configurationGroup.Version == version {
-			Repository.ConfigurationGroups = append(Repository.ConfigurationGroups[:0], Repository.ConfigurationGroups[1:]...)
-			return nil
-		}
+	if pair == nil {
+		return nil, ErrConfigurationGroupNotFound
 	}
-	return errors.New("configuration group not found")
+
+	var configGroup models.ConfigurationGroup
+	if err := json.Unmarshal(pair.Value, &configGroup); err != nil {
+		return nil, err
+	}
+
+	return &configGroup, nil
 }
