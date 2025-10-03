@@ -70,7 +70,7 @@ func IdempotencyMiddleware(consulClient *api.Client) func(http.Handler) http.Han
 				}
 
 				// Record is marked as completed, returned the cached response (status and body)
-				if record.Status == "completed" {
+				if record.Status == models.StatusCompleted {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(record.StatusCode)
 					w.Write([]byte(record.Body))
@@ -78,14 +78,14 @@ func IdempotencyMiddleware(consulClient *api.Client) func(http.Handler) http.Han
 				}
 
 				// Record is marked as in progress, rejecting the request to avoid race condition
-				if record.Status == "in-progress" {
+				if record.Status == models.StatusInProgress {
 					http.Error(w, "Request with this idempotency key is already in progress.", http.StatusConflict)
 					return
 				}
 			}
 
 			// Key does not exist. Create a placeholder (lock).
-			placeholder := &models.IdempotencyRecord{Status: "in-progress"}
+			placeholder := &models.IdempotencyRecord{Status: models.StatusInProgress}
 			placeholderJSON, _ := json.Marshal(placeholder)
 
 			p := &api.KVPair{Key: keyPath, Value: placeholderJSON, CreateIndex: 0}
@@ -118,7 +118,7 @@ func IdempotencyMiddleware(consulClient *api.Client) func(http.Handler) http.Han
 			// If it was a client/server error, we delete the key to allow a retry.
 			if rec.Code >= 200 && rec.Code < 300 {
 				finalRecord := models.IdempotencyRecord{
-					Status:     "completed",
+					Status:     models.StatusCompleted,
 					StatusCode: rec.Code,
 					Body:       rec.Body.String(),
 				}
