@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -11,12 +12,15 @@ import (
 )
 
 type ConfigurationGroupHandler struct {
-	Repository              *repositories.ConfigurationGroupRepository
-	ConfigurationRepository *repositories.ConfigurationRepository
+	gr *repositories.ConfigurationGroupRepository
+	cr *repositories.ConfigurationRepository
 }
 
-func NewConfigurationGroupHandler(repository *repositories.ConfigurationGroupRepository, configurationRepository *repositories.ConfigurationRepository) *ConfigurationGroupHandler {
-	return &ConfigurationGroupHandler{Repository: repository, ConfigurationRepository: configurationRepository}
+func NewConfigurationGroupHandler(gr *repositories.ConfigurationGroupRepository, cr *repositories.ConfigurationRepository) *ConfigurationGroupHandler {
+	return &ConfigurationGroupHandler{
+		gr: gr,
+		cr: cr,
+	}
 }
 
 // Helper function to send error response
@@ -29,17 +33,23 @@ func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, stat
 // FindAll retrieves all configuration groups
 // swagger:route GET /configurationGroups configurationGroups getAllConfigurationGroups
 //
-// Get all configuration groups
+// # Get all configuration groups
 //
 // This endpoint retrieves all configuration groups in the system.
 //
 // Responses:
-//   200: body:[]ConfigurationGroup
-//   500: body:ErrorResponse
+//
+//	200: body:[]ConfigurationGroup
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configurationGroups := h.Repository.FindAll()
-	err := json.NewEncoder(w).Encode(configurationGroups)
+	configurationGroups, err := h.gr.FindAll()
+	if err != nil {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(configurationGroups)
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
@@ -49,27 +59,28 @@ func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Reques
 // FindById retrieves a configuration group by ID
 // swagger:route GET /configurationGroups/{id} configurationGroups getConfigurationGroupById
 //
-// Get configuration group by ID
+// # Get configuration group by ID
 //
 // This endpoint retrieves a specific configuration group by its ID.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     type: string
 //     required: true
 //     description: The ID of the configuration group
 //
 // Responses:
-//   200: body:ConfigurationGroup
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroup
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := h.Repository.FindById(configurationGroupId)
+	configurationGroup, err := h.gr.FindById(configurationGroupId)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
@@ -84,25 +95,26 @@ func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Reque
 // Delete removes a configuration group by ID
 // swagger:route DELETE /configurationGroups/{id} configurationGroups deleteConfigurationGroupById
 //
-// Delete configuration group by ID
+// # Delete configuration group by ID
 //
 // This endpoint deletes a specific configuration group by its ID.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     type: string
 //     required: true
 //     description: The ID of the configuration group
 //
 // Responses:
-//   204: body:NoContentResponse
-//   404: body:ErrorResponse
+//
+//	204: body:NoContentResponse
+//	404: body:ErrorResponse
 func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
-	err := h.Repository.Delete(configurationGroupId)
+	err := h.gr.DeleteById(configurationGroupId)
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
@@ -116,16 +128,17 @@ func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request
 // Create creates a new configuration group
 // swagger:route POST /configurationGroups configurationGroups createConfigurationGroup
 //
-// Create a new configuration group
+// # Create a new configuration group
 //
 // This endpoint creates a new configuration group with the provided data.
 //
 // Responses:
-//   200: body:ConfigurationGroup
-//   400: body:ErrorResponse
-//   404: body:ErrorResponse
-//   409: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroup
+//	400: body:ErrorResponse
+//	404: body:ErrorResponse
+//	409: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var configurationGroupRequest dtos.ConfigurationGroupDto
@@ -136,35 +149,39 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	for _, configuration := range h.Repository.ConfigurationGroups {
-		if configuration.Name == configurationGroupRequest.Name && configuration.Version == configurationGroupRequest.Version {
-			h.sendErrorResponse(w, http.StatusConflict, "configuration group already exists")
-			return
-		}
+	_, err := h.gr.FindByNameAndVersion(configurationGroupRequest.Name, configurationGroupRequest.Version)
+	if err == nil {
+		h.sendErrorResponse(w, http.StatusConflict, "configuration group already exists")
+		return
+	}
+
+	if err != repositories.ErrConfigurationGroupNotFound {
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	// I thought it was a good idea to leave the transformation from dto the model in the handler since we are going
 	// to check if selected configurations for this configuration group exist by fetching data from the repository,
 	// and by leaving it as it is, I am avoiding giving mapper classes data access :D SAME GOES FOR THE UPDATE METHOD
 	configurationGroupConfigurationList := []*models.LabeledConfiguration{}
-
 	for _, configurationItem := range configurationGroupRequest.ConfigurationList {
-		found := false
-		for _, configuration := range h.ConfigurationRepository.Configurations {
-			if configurationItem.Id == configuration.Id {
-				found = true
-				configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
-			}
-		}
+		configuration, err := h.cr.FindById(configurationItem.Id)
 
-		if !found {
-			h.sendErrorResponse(w, http.StatusNotFound, "configuration with the id "+configurationItem.Id+" does not exist")
+		if err == repositories.ErrConfigurationNotFound {
+			h.sendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("configuration with the id %s does not exist", configurationItem.Id))
 			return
 		}
+
+		if err != nil {
+			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
 	}
 
 	newConfigurationGroup := models.ConfigurationGroup{Id: "", Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
-	configGroup, err := h.Repository.Create(&newConfigurationGroup)
+	configGroup, err := h.gr.Create(&newConfigurationGroup)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
@@ -179,15 +196,16 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 // Update updates an existing configuration group
 // swagger:route PUT /configurationGroups/{id} configurationGroups updateConfigurationGroup
 //
-// Update configuration group by ID
+// # Update configuration group by ID
 //
 // This endpoint updates an existing configuration group with the provided data.
 //
 // Responses:
-//   200: body:ConfigurationGroup
-//   400: body:ErrorResponse
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroup
+//	400: body:ErrorResponse
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
@@ -201,25 +219,24 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	configurationGroupConfigurationList := []*models.LabeledConfiguration{}
-
-	for _, configurationItem := range configGroupData.ConfigurationList {
-		found := false
-		for _, configuration := range h.ConfigurationRepository.Configurations {
-			if configurationItem.Id == configuration.Id {
-				found = true
-				configurationGroupConfigurationList = append(configurationGroupConfigurationList, &models.LabeledConfiguration{Id: "", Configuration: configuration, Labels: configurationItem.Labels})
-			}
-		}
-
-		if !found {
-			h.sendErrorResponse(w, http.StatusNotFound, "configuration with the id "+configurationItem.Id+" does not exist")
+	labeledConfiguration := []*models.LabeledConfiguration{}
+	for _, ci := range configGroupData.ConfigurationList {
+		c, err := h.cr.FindById(configurationGroupId)
+		if err == repositories.ErrConfigurationGroupNotFound {
+			h.sendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("configuration with the id %s does not exist", configurationGroupId))
 			return
 		}
+
+		if err != nil {
+			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		labeledConfiguration = append(labeledConfiguration, &models.LabeledConfiguration{Id: "", Configuration: c, Labels: ci.Labels})
 	}
 
-	updateConfigurationGroup := models.ConfigurationGroup{Id: configurationGroupId, Name: configGroupData.Name, Version: configGroupData.Version, Configurations: configurationGroupConfigurationList}
-	err := h.Repository.Update(configurationGroupId, &updateConfigurationGroup)
+	updateConfigurationGroup := models.ConfigurationGroup{Id: configurationGroupId, Name: configGroupData.Name, Version: configGroupData.Version, Configurations: labeledConfiguration}
+	err := h.gr.Update(configurationGroupId, &updateConfigurationGroup)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 	}
@@ -228,27 +245,28 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 // FindByIdToDto retrieves a configuration group by ID as DTO
 // swagger:route GET /configurationGroups/dto/{id} configurationGroups getConfigurationGroupByIdToDto
 //
-// Get configuration group by ID as DTO
+// # Get configuration group by ID as DTO
 //
 // This endpoint retrieves a specific configuration group by its ID and returns it as a DTO.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     type: string
 //     required: true
 //     description: The ID of the configuration group
 //
 // Responses:
-//   200: body:ConfigurationGroupDto
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroupDto
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := h.Repository.FindById(configurationGroupId)
+	configurationGroup, err := h.gr.FindById(configurationGroupId)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
@@ -269,33 +287,34 @@ func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.
 // FindByNameAndVersion retrieves a configuration group by name and version
 // swagger:route GET /configurationGroups/{name}/{version} configurationGroups getConfigurationGroupByNameAndVersion
 //
-// Get configuration group by name and version
+// # Get configuration group by name and version
 //
 // This endpoint retrieves a specific configuration group by its name and version.
 //
 // Parameters:
-//   + name: name
+//   - name: name
 //     in: path
 //     type: string
 //     required: true
 //     description: The name of the configuration group
-//   + name: version
+//   - name: version
 //     in: path
 //     type: string
 //     required: true
 //     description: The version of the configuration group
 //
 // Responses:
-//   200: body:ConfigurationGroup
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroup
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := h.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.gr.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
@@ -310,33 +329,34 @@ func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r
 // FindByNameAndVersionToDto retrieves a configuration group by name and version as DTO
 // swagger:route GET /configurationGroups/dto/{name}/{version} configurationGroups getConfigurationGroupByNameAndVersionToDto
 //
-// Get configuration group by name and version as DTO
+// # Get configuration group by name and version as DTO
 //
 // This endpoint retrieves a specific configuration group by its name and version and returns it as a DTO.
 //
 // Parameters:
-//   + name: name
+//   - name: name
 //     in: path
 //     type: string
 //     required: true
 //     description: The name of the configuration group
-//   + name: version
+//   - name: version
 //     in: path
 //     type: string
 //     required: true
 //     description: The version of the configuration group
 //
 // Responses:
-//   200: body:ConfigurationGroupDto
-//   404: body:ErrorResponse
-//   500: body:ErrorResponse
+//
+//	200: body:ConfigurationGroupDto
+//	404: body:ErrorResponse
+//	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := h.Repository.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.gr.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
@@ -357,32 +377,33 @@ func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWrit
 // DeleteByNameAndVersion removes a configuration group by name and version
 // swagger:route DELETE /configurationGroups/{name}/{version} configurationGroups deleteConfigurationGroupByNameAndVersion
 //
-// Delete configuration group by name and version
+// # Delete configuration group by name and version
 //
 // This endpoint deletes a specific configuration group by its name and version.
 //
 // Parameters:
-//   + name: name
+//   - name: name
 //     in: path
 //     type: string
 //     required: true
 //     description: The name of the configuration group
-//   + name: version
+//   - name: version
 //     in: path
 //     type: string
 //     required: true
 //     description: The version of the configuration group
 //
 // Responses:
-//   204: body:NoContentResponse
-//   404: body:ErrorResponse
+//
+//	204: body:NoContentResponse
+//	404: body:ErrorResponse
 func (h ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	err := h.Repository.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	err := h.gr.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return

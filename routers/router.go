@@ -14,8 +14,8 @@ import (
 )
 
 func HandleRequests(router *mux.Router, limiter *rate.Limiter, consulClient *api.Client) http.Handler {
-	configurationRepository := repositories.NewRepository()
-	configurationGroupRepository := repositories.NewConfigurationGroupRepository()
+	configurationRepository := repositories.NewConfigurationRepository(consulClient)
+	configurationGroupRepository := repositories.NewConfigurationGroupRepository(consulClient)
 
 	configurationHandler := handlers.NewConfigurationHandler(configurationRepository)
 	configurationGroupHandler := handlers.NewConfigurationGroupHandler(configurationGroupRepository, configurationRepository)
