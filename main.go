@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -24,11 +25,16 @@ func main() {
 	router := mux.NewRouter()
 
 	consulConfig := api.DefaultConfig()
-	consulConfig.Address = "127.0.0.1:8500" // Or from config
+	consulConfig.Address = os.Getenv("CONSUL_ADDRESS")
 	consulClient, _ := api.NewClient(consulConfig)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+
 	srv := http.Server{
-		Addr:    ":8000",
+		Addr:    ":" + port,
 		Handler: routers.HandleRequests(router, limiter, consulClient),
 	}
 
@@ -36,7 +42,7 @@ func main() {
 	// this block will never be executed since the go-routine will be used by the server which will
 	// listen for requests throughout its lifecycle
 	go func() {
-		fmt.Println("Listening on port :8000")
+		fmt.Println("Listening on port :" + port)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatal("Stopped listening: " + err.Error())
 		}
