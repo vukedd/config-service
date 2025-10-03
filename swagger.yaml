@@ -231,7 +231,6 @@ definitions:
         description: NoContentResponse represents empty response for successful operations with no content
         type: object
         x-go-package: github.com/vukedd/config-service/models
-host: localhost:8000
 info:
     description: |-
         This is a RESTful API service for managing configurations and configuration groups.
