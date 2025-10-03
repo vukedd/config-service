@@ -27,7 +27,7 @@ jobs:
         run: |
           docker compose up -d consul
           echo "Waiting for Consul to be healthy..."
-          until [ "$(docker inspect -f '{{.State.Health.Status}}' $(docker-compose ps -q consul))" == "healthy" ]; do
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' $(docker compose ps -q consul))" == "healthy" ]; do
             sleep 2
           done
 
