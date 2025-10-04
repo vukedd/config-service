@@ -13,17 +13,21 @@ import (
 	"github.com/vukedd/config-service/dtos"
 	"github.com/vukedd/config-service/models"
 	"github.com/vukedd/config-service/repositories"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ConfigurationGroupHandler struct {
-	gr *repositories.ConfigurationGroupRepository
-	cr *repositories.ConfigurationRepository
+	gr     *repositories.ConfigurationGroupRepository
+	cr     *repositories.ConfigurationRepository
+	Tracer trace.Tracer
 }
 
-func NewConfigurationGroupHandler(gr *repositories.ConfigurationGroupRepository, cr *repositories.ConfigurationRepository) *ConfigurationGroupHandler {
+func NewConfigurationGroupHandler(gr *repositories.ConfigurationGroupRepository, cr *repositories.ConfigurationRepository, tracer trace.Tracer) *ConfigurationGroupHandler {
 	return &ConfigurationGroupHandler{
-		gr: gr,
-		cr: cr,
+		gr:     gr,
+		cr:     cr,
+		Tracer: tracer,
 	}
 }
 
@@ -47,8 +51,10 @@ func (h ConfigurationGroupHandler) sendErrorResponse(w http.ResponseWriter, stat
 //	200: body:[]ConfigurationGroup
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.FindAll")
+	defer span.End()
 
+	w.Header().Set("Content-Type", "application/json")
 	q, err := url.ParseQuery(strings.ReplaceAll(r.URL.RawQuery, ";", "%3B"))
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
@@ -58,13 +64,13 @@ func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Reques
 	var configurationGroups []*models.ConfigurationGroup
 	labels := q.Get("labels")
 	if labels != "" {
-		configurationGroups, err = h.gr.FindByLabel(labels)
+		configurationGroups, err = h.gr.FindByLabel(ctx, labels)
 		if errors.Is(err, repositories.ErrDuplicateLabel) {
 			h.sendErrorResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	} else {
-		configurationGroups, err = h.gr.FindAll()
+		configurationGroups, err = h.gr.FindAll(ctx)
 	}
 
 	if err != nil {
@@ -75,7 +81,10 @@ func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Reques
 	err = json.NewEncoder(w).Encode(configurationGroups)
 
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -99,19 +108,26 @@ func (h ConfigurationGroupHandler) FindAll(w http.ResponseWriter, r *http.Reques
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.FindById")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := h.gr.FindById(configurationGroupId)
+	configurationGroup, err := h.gr.FindById(ctx, configurationGroupId)
 	if err == repositories.ErrConfigurationNotFound {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configurationGroup)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -134,21 +150,27 @@ func (h ConfigurationGroupHandler) FindById(w http.ResponseWriter, r *http.Reque
 //	204: body:NoContentResponse
 //	404: body:ErrorResponse
 func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.Delete")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
-	err := h.gr.DeleteById(configurationGroupId)
+	err := h.gr.DeleteById(ctx, configurationGroupId)
 
 	if err == repositories.ErrConfigurationNotFound {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		span.SetStatus(codes.Error, err.Error())
+		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
+	span.SetStatus(codes.Ok, "")
 	w.WriteHeader(http.StatusNoContent)
 	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
@@ -166,43 +188,53 @@ func (h ConfigurationGroupHandler) Delete(w http.ResponseWriter, r *http.Request
 //	204: body:NoContentResponse
 //	400: body:ErrorResponse
 func (h ConfigurationGroupHandler) DeleteByLabel(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.DeleteByLabel")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	q, err := url.ParseQuery(strings.ReplaceAll(r.URL.RawQuery, ";", "%3B"))
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 
 	labels := q.Get("labels")
 	if len(labels) < 1 {
 		h.sendErrorResponse(w, http.StatusBadRequest, "you must specify at least one label")
+		span.SetStatus(codes.Error, "you must specify at least one label")
 		return
 	}
 
-	list, err := h.gr.FindByLabel(labels)
+	list, err := h.gr.FindByLabel(ctx, labels)
 	if errors.Is(err, repositories.ErrDuplicateLabel) {
 		h.sendErrorResponse(w, http.StatusBadRequest, err.Error())
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 
 	if len(list) < 1 {
 		h.sendErrorResponse(w, http.StatusNotFound, "configuration group not found")
+		span.SetStatus(codes.Error, "configuration group not found")
 		return
 	}
 
 	for _, cg := range list {
-		err = h.gr.DeleteById(cg.Id)
+		err = h.gr.DeleteById(ctx, cg.Id)
 		if err != nil {
 			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+			span.SetStatus(codes.Error, err.Error())
 			return
 		}
 	}
 
+	span.SetStatus(codes.Ok, "")
 	w.WriteHeader(http.StatusNoContent)
 	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }
@@ -222,22 +254,28 @@ func (h ConfigurationGroupHandler) DeleteByLabel(w http.ResponseWriter, r *http.
 //	409: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.Create")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	var configurationGroupRequest dtos.ConfigurationGroupDto
 	_ = json.NewDecoder(r.Body).Decode(&configurationGroupRequest)
 
 	if len(configurationGroupRequest.ConfigurationList) < 1 {
+		span.SetStatus(codes.Error, "you must define at least one configuration")
 		h.sendErrorResponse(w, http.StatusBadRequest, "you must define at least one configuration")
 		return
 	}
 
-	_, err := h.gr.FindByNameAndVersion(configurationGroupRequest.Name, configurationGroupRequest.Version)
+	_, err := h.gr.FindByNameAndVersion(ctx, configurationGroupRequest.Name, configurationGroupRequest.Version)
 	if err == nil {
+		span.SetStatus(codes.Error, "configuration group already exists")
 		h.sendErrorResponse(w, http.StatusConflict, "configuration group already exists")
 		return
 	}
 
 	if err != repositories.ErrConfigurationGroupNotFound {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -247,14 +285,16 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 	// and by leaving it as it is, I am avoiding giving mapper classes data access :D SAME GOES FOR THE UPDATE METHOD
 	configurationGroupConfigurationList := []*models.LabeledConfiguration{}
 	for _, configurationItem := range configurationGroupRequest.ConfigurationList {
-		configuration, err := h.cr.FindById(configurationItem.Id)
+		configuration, err := h.cr.FindById(ctx, configurationItem.Id)
 
 		if err == repositories.ErrConfigurationNotFound {
+			span.SetStatus(codes.Error, fmt.Sprintf("configuration with the id %s does not exist", configurationItem.Id))
 			h.sendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("configuration with the id %s does not exist", configurationItem.Id))
 			return
 		}
 
 		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -267,15 +307,19 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 	}
 
 	newConfigurationGroup := models.ConfigurationGroup{Name: configurationGroupRequest.Name, Version: configurationGroupRequest.Version, Configurations: configurationGroupConfigurationList}
-	configGroup, err := h.gr.Create(&newConfigurationGroup)
+	configGroup, err := h.gr.Create(ctx, &newConfigurationGroup)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configGroup)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -293,6 +337,9 @@ func (h ConfigurationGroupHandler) Create(w http.ResponseWriter, r *http.Request
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.Update")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
@@ -301,19 +348,22 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 	json.NewDecoder(r.Body).Decode(&configGroupData)
 
 	if len(configGroupData.ConfigurationList) < 1 {
+		span.SetStatus(codes.Error, "you must define at least one configuration")
 		h.sendErrorResponse(w, http.StatusBadRequest, "you must define at least one configuration")
 		return
 	}
 
 	labeledConfiguration := []*models.LabeledConfiguration{}
 	for _, ci := range configGroupData.ConfigurationList {
-		c, err := h.cr.FindById(configurationGroupId)
-		if err == repositories.ErrConfigurationGroupNotFound {
-			h.sendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("configuration with the id %s does not exist", configurationGroupId))
+		c, err := h.cr.FindById(ctx, ci.Id)
+		if err == repositories.ErrConfigurationNotFound {
+			span.SetStatus(codes.Error, fmt.Sprintf("configuration with the id %s does not exist", ci.Id))
+			h.sendErrorResponse(w, http.StatusNotFound, fmt.Sprintf("configuration with the id %s does not exist", ci.Id))
 			return
 		}
 
 		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -322,9 +372,12 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 	}
 
 	updateConfigurationGroup := models.ConfigurationGroup{Id: configurationGroupId, Name: configGroupData.Name, Version: configGroupData.Version, Configurations: labeledConfiguration}
-	err := h.gr.Update(configurationGroupId, &updateConfigurationGroup)
+	err := h.gr.Update(ctx, configurationGroupId, &updateConfigurationGroup)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -348,12 +401,16 @@ func (h ConfigurationGroupHandler) Update(w http.ResponseWriter, r *http.Request
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.FindByIdToDto")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupId := params["id"]
 
-	configurationGroup, err := h.gr.FindById(configurationGroupId)
+	configurationGroup, err := h.gr.FindById(ctx, configurationGroupId)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -366,7 +423,10 @@ func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.
 	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
 	err = json.NewEncoder(w).Encode(configurationGroupDto)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -395,20 +455,27 @@ func (h ConfigurationGroupHandler) FindByIdToDto(w http.ResponseWriter, r *http.
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.FindByNameAndVersion")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := h.gr.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.gr.FindByNameAndVersion(ctx, configurationGroupName, configurationGroupVersion)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(configurationGroup)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -437,13 +504,17 @@ func (h ConfigurationGroupHandler) FindByNameAndVersion(w http.ResponseWriter, r
 //	404: body:ErrorResponse
 //	500: body:ErrorResponse
 func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.FindByNameAndVersionToDto")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	configurationGroup, err := h.gr.FindByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	configurationGroup, err := h.gr.FindByNameAndVersion(ctx, configurationGroupName, configurationGroupVersion)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -456,7 +527,10 @@ func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWrit
 	configurationGroupDto := dtos.ConfigurationGroupDto{Name: configurationGroup.Name, Version: configurationGroup.Version, ConfigurationList: configurationsTransformedToDto}
 	err = json.NewEncoder(w).Encode(configurationGroupDto)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 }
 
@@ -484,17 +558,22 @@ func (h ConfigurationGroupHandler) FindByNameAndVersionToDto(w http.ResponseWrit
 //	204: body:NoContentResponse
 //	404: body:ErrorResponse
 func (h ConfigurationGroupHandler) DeleteByNameAndVersion(w http.ResponseWriter, r *http.Request) {
+	ctx, span := h.Tracer.Start(r.Context(), "ConfigurationGroupHandler.DeleteByNameAndVersion")
+	defer span.End()
+
 	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 	configurationGroupName := params["name"]
 	configurationGroupVersion := params["version"]
 
-	err := h.gr.DeleteByNameAndVersion(configurationGroupName, configurationGroupVersion)
+	err := h.gr.DeleteByNameAndVersion(ctx, configurationGroupName, configurationGroupVersion)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		h.sendErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
+	span.SetStatus(codes.Ok, "")
 	w.WriteHeader(http.StatusNoContent)
 	json.NewEncoder(w).Encode(models.NoContentResponse{})
 }

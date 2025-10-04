@@ -1,22 +1,18 @@
 services:
   server:
     build: .
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    volumes:
-      - ./prometheus:/etc/prometheus
-      - prometheus-data:/prometheus
+    restart: always
     ports:
       - 8000:8000
     environment:
       - PORT=8000
       - CONSUL_ADDRESS=consul:8500
+      - JAEGER_ADDRESS=jaeger:4318 # Changed to OTLP endpoint
     depends_on:
       consul:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   consul:
     image: hashicorp/consul:1.21
@@ -33,6 +29,17 @@ services:
       timeout: 3s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "14268:14268"
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -43,8 +50,6 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/etc/prometheus/console_libraries"
-      - "--web.console.templates=/etc/prometheus/consoles"
       - "--storage.tsdb.retention.time=200h"
       - "--web.enable-lifecycle"
 

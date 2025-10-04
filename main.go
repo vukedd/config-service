@@ -20,18 +20,39 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/consul/api"
+	"github.com/vukedd/config-service/config"
 	"github.com/vukedd/config-service/routers"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0" // Use available version
 	"golang.org/x/time/rate"
 )
 
 func main() {
+	cfg := config.GetConfig()
+
+	ctx := context.Background()
+	exp, err := newExporter(cfg.JaegerAddress)
+	if err != nil {
+		log.Fatalf("failed to initialize exporter: %v", err)
+	}
+	// Create a new tracer provider with a batch span processor and the given exporter.
+	tp := newTraceProvider(exp)
+	// Handle shutdown properly so nothing leaks.
+	defer func() { _ = tp.Shutdown(ctx) }()
+	otel.SetTracerProvider(tp)
+	// Finally, set the tracer that can be used for this package.
+	tracer := tp.Tracer("config-service")
+	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	// 10 requests on initialization,
 	// 12 requests per minute (1 request per 5 seconds)
@@ -40,24 +61,19 @@ func main() {
 	router := mux.NewRouter()
 
 	consulConfig := api.DefaultConfig()
-	consulConfig.Address = os.Getenv("CONSUL_ADDRESS")
+	consulConfig.Address = cfg.ConsulAddress
 	consulClient, _ := api.NewClient(consulConfig)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8000"
-	}
-
 	srv := http.Server{
-		Addr:    ":" + port,
-		Handler: routers.HandleRequests(router, limiter, consulClient),
+		Addr:    cfg.Address,
+		Handler: routers.HandleRequests(router, limiter, consulClient, tracer),
 	}
 
 	// Starting the server on a new go-routine instead of the main one because the code bellow
 	// this block will never be executed since the go-routine will be used by the server which will
 	// listen for requests throughout its lifecycle
 	go func() {
-		fmt.Println("Listening on port :" + port)
+		fmt.Println("Listening on port" + cfg.Address)
 		if err := srv.ListenAndServe(); err != nil {
 			log.Fatal("Stopped listening: " + err.Error())
 		}
@@ -93,4 +109,37 @@ func main() {
 	if err := srv.Shutdown(timeoutContext); err != nil {
 		log.Fatalf("Stopped shutting down: %s", err.Error())
 	}
+}
+
+func newExporter(address string) (sdktrace.SpanExporter, error) {
+	// Create OTLP HTTP exporter
+	exporter, err := otlptracehttp.New(
+		context.Background(),
+		otlptracehttp.WithEndpoint(address),
+		otlptracehttp.WithURLPath("/v1/traces"),
+		otlptracehttp.WithInsecure(), // Use for development only
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OTLP exporter: %w", err)
+	}
+	return exporter, nil
+}
+
+func newTraceProvider(exp sdktrace.SpanExporter) *sdktrace.TracerProvider {
+	// Use schemaless resource to avoid version conflicts
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewSchemaless(
+			semconv.ServiceName("config-service"),
+		),
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp),
+		sdktrace.WithResource(r),
+	)
 }
