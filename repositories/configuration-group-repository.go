@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/consul/api"
@@ -16,185 +17,246 @@ import (
 const consulGroupsKey = "groups"
 
 var (
-    ErrConfigurationGroupNotFound = errors.New("configuration group not found")
-    ErrConfigurationGroupExists   = errors.New("configuration group already exists")
+	ErrConfigurationGroupNotFound = errors.New("configuration group not found")
+	ErrConfigurationGroupExists   = errors.New("configuration group already exists")
+	ErrDuplicateLabel             = errors.New("duplicate label")
 )
 
 type ConfigurationGroupRepository struct {
-    *ConsulClient
-    Tracer trace.Tracer
+	*ConsulClient
+	Tracer trace.Tracer
 }
 
 func (c *ConfigurationGroupRepository) kvKeyFromConfigurationGroup(configGroup *models.ConfigurationGroup) string {
-    return c.kvKey(consulGroupsKey, configGroup.Name, configGroup.Version)
+	return c.kvKey(consulGroupsKey, configGroup.Name, configGroup.Version)
 }
 
 func NewConfigurationGroupRepository(consulClient *api.Client, tracer trace.Tracer) *ConfigurationGroupRepository {
-    return &ConfigurationGroupRepository{
-        ConsulClient: &ConsulClient{consulClient},
-        Tracer:       tracer,
-    }
+	return &ConfigurationGroupRepository{
+		ConsulClient: &ConsulClient{consulClient},
+		Tracer:       tracer,
+	}
 }
 
 func (r *ConfigurationGroupRepository) FindAll(ctx context.Context) ([]*models.ConfigurationGroup, error) {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindAll")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindAll")
+	defer span.End()
 
-    kv := r.consul.KV()
-    pairs, _, err := kv.List(fmt.Sprintf("%s/", consulGroupsKey), nil)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return nil, err
-    }
+	kv := r.consul.KV()
+	pairs, _, err := kv.List(fmt.Sprintf("%s/", consulGroupsKey), nil)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-    configs := []*models.ConfigurationGroup{}
-    for _, pair := range pairs {
-        var c models.ConfigurationGroup
-        if err := json.Unmarshal(pair.Value, &c); err != nil {
-            continue // skip malformed entries
-        }
+	configs := []*models.ConfigurationGroup{}
+	for _, pair := range pairs {
+		var c models.ConfigurationGroup
+		if err := json.Unmarshal(pair.Value, &c); err != nil {
+			continue // skip malformed entries
+		}
 
-        configs = append(configs, &c)
-    }
+		configs = append(configs, &c)
+	}
 
-    span.SetStatus(codes.Ok, "")
-    return configs, nil
+	span.SetStatus(codes.Ok, "")
+	return configs, nil
 }
 
 func (r *ConfigurationGroupRepository) FindById(ctx context.Context, id string) (*models.ConfigurationGroup, error) {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindById")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindById")
+	defer span.End()
 
-    groups, err := r.FindAll(ctx)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return nil, err
-    }
+	groups, err := r.FindAll(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-    for _, group := range groups {
-        if group.Id == id {
-            span.SetStatus(codes.Ok, "")
-            return group, nil
-        }
-    }
-    
-    span.SetStatus(codes.Error, "configuration group not found")
-    return nil, ErrConfigurationGroupNotFound
+	for _, group := range groups {
+		if group.Id == id {
+			span.SetStatus(codes.Ok, "")
+			return group, nil
+		}
+	}
+
+	span.SetStatus(codes.Error, "configuration group not found")
+	return nil, ErrConfigurationGroupNotFound
+}
+
+// extractLabels converts list argument of (key:value;key2:value) to map[string]string
+func extractLabels(list string) (map[string]string, error) {
+	split := strings.Split(list, ";")
+	values := make(map[string]string)
+
+	for _, s := range split {
+		kv := strings.Split(s, ":")
+		if _, ok := values[kv[0]]; ok {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateLabel, kv[0])
+		}
+
+		values[kv[0]] = kv[1]
+	}
+
+	return values, nil
+}
+
+func (r *ConfigurationGroupRepository) FindByLabel(ctx context.Context, list string) ([]*models.ConfigurationGroup, error) {
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindById")
+	defer span.End()
+
+	groups, err := r.FindAll(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	labels, err := extractLabels(list)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	cg := []*models.ConfigurationGroup{}
+	for _, group := range groups {
+		for _, lc := range group.Configurations {
+			found := true
+			for k, v := range labels {
+				if lc.Labels[k] != v {
+					found = false
+					break
+				}
+			}
+
+			if found {
+				cg = append(cg, group)
+			}
+		}
+	}
+	
+
+	if len(cg) == 0 {
+		span.SetStatus(codes.Error, "configuration group not found")
+		return nil, ErrConfigurationGroupNotFound
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return cg, nil
 }
 
 func (r *ConfigurationGroupRepository) Create(ctx context.Context, g *models.ConfigurationGroup) (*models.ConfigurationGroup, error) {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.Create")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.Create")
+	defer span.End()
 
-    kv := r.consul.KV()
-    key := r.kvKeyFromConfigurationGroup(g)
+	kv := r.consul.KV()
+	key := r.kvKeyFromConfigurationGroup(g)
 
-    existing, _, _ := kv.Get(key, nil)
-    if existing != nil {
-        span.SetStatus(codes.Error, "configuration group already exists")
-        return nil, ErrConfigurationGroupExists
-    }
+	existing, _, _ := kv.Get(key, nil)
+	if existing != nil {
+		span.SetStatus(codes.Error, "configuration group already exists")
+		return nil, ErrConfigurationGroupExists
+	}
 
-    g.Id = uuid.New().String()
-    data, _ := json.Marshal(g)
+	g.Id = uuid.New().String()
+	data, _ := json.Marshal(g)
 
-    p := &api.KVPair{Key: key, Value: data}
-    _, err := kv.Put(p, nil)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return nil, err
-    }
+	p := &api.KVPair{Key: key, Value: data}
+	_, err := kv.Put(p, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-    span.SetStatus(codes.Ok, "")
-    return g, nil
+	span.SetStatus(codes.Ok, "")
+	return g, nil
 }
 
 func (r *ConfigurationGroupRepository) DeleteByNameAndVersion(ctx context.Context, name string, version string) error {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.DeleteByNameAndVersion")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.DeleteByNameAndVersion")
+	defer span.End()
 
-    kv := r.consul.KV()
-    key := r.kvKey(consulGroupsKey, name, version)
-    _, err := kv.Delete(key, nil)
-    
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-    } else {
-        span.SetStatus(codes.Ok, "")
-    }
-    
-    return err
+	kv := r.consul.KV()
+	key := r.kvKey(consulGroupsKey, name, version)
+	_, err := kv.Delete(key, nil)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
+
+	return err
 }
 
 func (r *ConfigurationGroupRepository) DeleteById(ctx context.Context, id string) error {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.DeleteById")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.DeleteById")
+	defer span.End()
 
-    groups, err := r.FindAll(ctx)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return err
-    }
+	groups, err := r.FindAll(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
 
-    kv := r.consul.KV()
-    for _, g := range groups {
-        if g.Id == id {
-            key := r.kvKeyFromConfigurationGroup(g)
-            _, err := kv.Delete(key, nil)
-            if err != nil {
-                span.SetStatus(codes.Error, err.Error())
-            } else {
-                span.SetStatus(codes.Ok, "")
-            }
-            return err
-        }
-    }
+	kv := r.consul.KV()
+	for _, g := range groups {
+		if g.Id == id {
+			key := r.kvKeyFromConfigurationGroup(g)
+			_, err := kv.Delete(key, nil)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+			} else {
+				span.SetStatus(codes.Ok, "")
+			}
+			return err
+		}
+	}
 
-    span.SetStatus(codes.Error, "configuration group not found")
-    return ErrConfigurationGroupNotFound
+	span.SetStatus(codes.Error, "configuration group not found")
+	return ErrConfigurationGroupNotFound
 }
 
 // Update updates an existing configuration group
 // with new configurations from `cg`
 func (r *ConfigurationGroupRepository) Update(ctx context.Context, Id string, cg *models.ConfigurationGroup) error {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.Update")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.Update")
+	defer span.End()
 
-    g, err := r.FindById(ctx, Id)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return err
-    }
+	g, err := r.FindById(ctx, Id)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
 
-    g.Configurations = cg.Configurations
-    span.SetStatus(codes.Ok, "")
-    return nil
+	g.Configurations = cg.Configurations
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 func (r *ConfigurationGroupRepository) FindByNameAndVersion(ctx context.Context, name string, version string) (*models.ConfigurationGroup, error) {
-    _, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindByNameAndVersion")
-    defer span.End()
+	_, span := r.Tracer.Start(ctx, "ConfigurationGroupRepository.FindByNameAndVersion")
+	defer span.End()
 
-    kv := r.consul.KV()
-    key := r.kvKey(consulGroupsKey, name, version)
+	kv := r.consul.KV()
+	key := r.kvKey(consulGroupsKey, name, version)
 
-    pair, _, err := kv.Get(key, nil)
-    if err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return nil, err
-    }
+	pair, _, err := kv.Get(key, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-    if pair == nil {
-        span.SetStatus(codes.Error, "configuration group not found")
-        return nil, ErrConfigurationGroupNotFound
-    }
+	if pair == nil {
+		span.SetStatus(codes.Error, "configuration group not found")
+		return nil, ErrConfigurationGroupNotFound
+	}
 
-    var configGroup models.ConfigurationGroup
-    if err := json.Unmarshal(pair.Value, &configGroup); err != nil {
-        span.SetStatus(codes.Error, err.Error())
-        return nil, err
-    }
+	var configGroup models.ConfigurationGroup
+	if err := json.Unmarshal(pair.Value, &configGroup); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
 
-    span.SetStatus(codes.Ok, "")
-    return &configGroup, nil
+	span.SetStatus(codes.Ok, "")
+	return &configGroup, nil
 }
