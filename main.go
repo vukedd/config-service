@@ -21,7 +21,6 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -113,14 +112,10 @@ func main() {
 }
 
 func newExporter(address string) (sdktrace.SpanExporter, error) {
-    // Clean the address - remove any protocol prefix
-    address = strings.TrimPrefix(address, "http://")
-    address = strings.TrimPrefix(address, "https://")
-    
     // Create OTLP HTTP exporter
     exporter, err := otlptracehttp.New(
         context.Background(),
-        otlptracehttp.WithEndpoint("http://"+address),
+        otlptracehttp.WithEndpoint(address),
         otlptracehttp.WithURLPath("/v1/traces"),
         otlptracehttp.WithInsecure(), // Use for development only
     )
