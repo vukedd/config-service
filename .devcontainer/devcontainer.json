@@ -10,6 +10,7 @@
 	},
 	"updateContentCommand": "bash .devcontainer/scripts/update-content.sh",
 	"forwardPorts": [
+		9090,
 		8000,
 		8500,
 		8600
